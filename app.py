@@ -10,12 +10,15 @@ from flask_cors import CORS  # Import CORS
 from src.LipShapeAnalyzer import LipShapeAnalyzer
 from src.NoseShapeAnalyzer import NoseAnalyzer
 from src.EyesShapeAnalyzer import EyeShapeAnalyzer
-from src.BodyShapeAnalyzer import BodyShapeAnalyzer
+from src.BodyShapeAnalyzer import PoseAnalyzer
+from src.BodyShapeAnalyzer import ImageSegmentationProcessor
+from src.BodyShapeAnalyzer import PoseSegmentationVisualizer
 from src.FaceShapeAnalyzer import FaceAnalyzer
 
 from aliyun_upload import upload_to_oss
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制16MB
 CORS(app)  # Enable CORS for all routes
 # You can also restrict it to a specific origin:
 # CORS(app, origins=["http://localhost:3000"])
@@ -97,17 +100,36 @@ def body_analyze():
         image_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if image is None:
+            return jsonify({"error": "Failed to decode image"}), 400
 
         # Analyze body shape
-        body_analyzer = BodyShapeAnalyzer(image)
+        body_analyzer = PoseAnalyzer(image)
+        body_analyzer.analyze()
         body_analyzer.image = image  # 使用已经解码的图像
         body_analyzer.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        body_analyzer.detect_landmarks()
-        body_analyzer.calculate_head_shoulder_ratio()
-        body_analyzer.calculate_body_proportion()
+
+        #修改
+        try:
+            three_d_model = PoseSegmentationVisualizer(image)
+            three_d_model.process_and_visualize()
+        except Exception as e:
+            return jsonify({"error": f"3D Model visualization error: {str(e)}"}), 400
 
         result = {
-            "body_shape_info": body_analyzer.result
+            "body_shape": body_analyzer.result,
+             "Body_detailed_info": {
+                "头肩比": body_analyzer.result.get('头肩比', '未知'),
+                "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
+                "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
+                "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),            
+            },
+            "three_d_model": three_d_model.result,
+            "three_d_model_info": {
+                "三围比例": three_d_model.result.get('身材比例(肩：腰：臀)', '未知'),
+                "身材类型": three_d_model.result.get('身材类型', '未知'),
+                "腿型": three_d_model.result.get('腿型', '未知'),
+            },
         }
 
         return jsonify(result), 200
@@ -145,11 +167,13 @@ def face_analyze():
         nose_analyzer = NoseAnalyzer(image)
         nose_analyzer.detect_landmarks()
         # 1. Nose width analysis
-        _, nose_width = nose_analyzer.calculate_distance_ratio()
+        nose_analyzer.calculate_distance_ratio()
         # 2. Nose bridge position analysis
-        nose_bridge_result = nose_analyzer.analyze_nose_bridge(threshold=20)
+        nose_analyzer.analyze_nose_bridge(threshold=20)
         # 3. Nose wing curvature analysis
-        nose_wing_curvature = nose_analyzer.analyze_nose_wing_curvature()
+        nose_analyzer.analyze_nose_wing_curvature()
+        # 4. ** The final analysis results **
+        nose_analyzer.visualize_nose_bridge_analysis() #***
 
         # Analyze eye shape
         eye_analyzer = EyeShapeAnalyzer(image)
@@ -169,21 +193,50 @@ def face_analyze():
       
         # Collect the analysis results
         result = {
-            "lip_shape": lip_analyzer.result,
+            "lip_shape": lip_analyzer.result, 
             "Lips_detailed_info": {
-                "唇形": lip_analyzer.judge_round_wide_lip()[1],
-                "厚薄":lip_analyzer.judge_thin_thick_lip()[1],
-                "唇形":lip_analyzer.judge_m_lip()[1],
-                "右嘴角": lip_analyzer.right_angle,
-                "左嘴角": lip_analyzer.left_angle,
+                "唇形": lip_analyzer.result.get('唇形', '未知'),
+                "唇部数据": lip_analyzer.result.get('唇部数据', '未知'),
+                '上唇': lip_analyzer.result.get('上唇', '未知'),
+                '下唇': lip_analyzer.result.get('下唇', '未知'),
+                "上下唇比例": lip_analyzer.result.get('上下唇比例', '未知'),
+                "曲直结果": lip_analyzer.result.get('曲直结果', '未知'),            
             },
+            "nose_shape": nose_analyzer.result,
             "nose_detailed_info": {
-                "鼻翼宽窄判断": nose_width,
-                "山根位置": nose_bridge_result,
-                "鼻翼曲直判断": nose_wing_curvature,
+                "鼻翼宽窄判断": nose_analyzer.result.get('鼻翼宽窄', '未知'),
+                "右脸山根": nose_analyzer.result.get('右脸山根', '未知'),
+                "左脸山根": nose_analyzer.result.get('左脸山根', '未知'),
+                "山根曲直": nose_analyzer.result.get('山根曲直', '未知'),
+                "鼻翼曲直判断": nose_analyzer.result.get('鼻翼曲线综合判断', '未知'),
+                "右鼻翼曲率": nose_analyzer.result.get('右鼻翼曲率', '未知'),
+                "左鼻翼曲率": nose_analyzer.result.get('左鼻翼曲率', '未知'),
+                "鼻孔比例": nose_analyzer.result.get('鼻孔比例', '未知'),
+                "鼻型综合曲直": nose_analyzer.result.get('鼻型综合曲直', '未知'),
             },
-            "eye_detailed_info": eye_analyzer.result, 
-            "Face_shape_info": face_analyzer.result,
+            "eye_shape": eye_analyzer.result, 
+            "eye_detailed_info": {
+                "右眼类型": eye_analyzer.result.get('右眼类型', '未知'),
+                "右眼曲直": eye_analyzer.result.get('右眼曲直', '未知'),
+                "右眼眼长和眼高的比例": eye_analyzer.result.get('右眼长高比例', '未知'),
+                "左眼类型": eye_analyzer.result.get('左眼类型', '未知'),
+                "左眼曲直": eye_analyzer.result.get('左眼曲直', '未知'),
+                "左眼眼长和眼高的比例": eye_analyzer.result.get('左眼长高比例', '未知'),
+                "眼型综合曲直": eye_analyzer.result.get('眼型曲直综合', '未知'),
+            },
+            "Face_shape": face_analyzer.result, # {'五眼比例': '0.79 : 1 : 1.24 : 0.93 : 0.68', '三庭比例': '1 : 1.63 : 1.46', '三线比例': '0.95 : 1 : 0.88', '脸长和脸宽的比例': '1.3', '下巴形状': '钝弧（圆形下巴）', '脸型判断结果': '圆形脸', '脸部风格': '长中庭, 气质脸'}
+            "Face_shape_info": {
+                "五眼比例": face_analyzer.result.get('五眼比例', '未知'),
+                "三庭比例": face_analyzer.result.get('三庭比例', '未知'),
+                "三线比例": face_analyzer.result.get('三线比例', '未知'),
+                "脸长和脸宽的比例": face_analyzer.result.get('脸长和脸宽的比例', '未知'),
+                "下巴形状": face_analyzer.result.get('下巴形状', '未知'),
+                "脸型判断结果": face_analyzer.result.get('脸型判断结果', '未知'),
+                "脸部风格": face_analyzer.result.get('脸部风格', '未知'),
+                "脸型曲直": face_analyzer.result.get('脸型曲直', '未知'),
+            },
+
+
             #  "body_shape_info": body_analyzer.result
         }
 
@@ -251,4 +304,4 @@ def yolo_detect():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000)  #debug = True

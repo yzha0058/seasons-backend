@@ -111,7 +111,7 @@ def body_analyze():
 
         #修改
         try:
-            three_d_model = PoseSegmentationVisualizer(image)
+            three_d_model = PoseSegmentationVisualizer(image, model_path="selfie_segmenter.tflite")
             three_d_model.process_and_visualize()
         except Exception as e:
             return jsonify({"error": f"3D Model visualization error: {str(e)}"}), 400
@@ -131,6 +131,8 @@ def body_analyze():
                 "腿型": three_d_model.result.get('腿型', '未知'),
             },
         }
+
+        print(result)
 
         return jsonify(result), 200
 

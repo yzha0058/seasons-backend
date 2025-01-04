@@ -3,6 +3,7 @@ import mediapipe as mp
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import os
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -123,7 +124,12 @@ class PoseAnalyzer:
 #图像分割，提取轮廓
 class ImageSegmentationProcessor:
     def __init__(self, image, model_path = 'selfie_segmenter.tflite'):
-        self.model_path = model_path
+         # Resolve the absolute path of the model
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of the current script
+        self.model_path = os.path.join(script_dir, model_path)  # Combine script directory with relative path
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found at {self.model_path}")
+
         self.image = image
         self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         self.segmenter = None
@@ -138,10 +144,25 @@ class ImageSegmentationProcessor:
         self.DESIRED_HEIGHT = 480   #输出图像的尺寸
         self.DESIRED_WIDTH = 480
 
-    def initialize_segmenter(self):  #初始化图像分割模型
-        base_options = python.BaseOptions(model_asset_path=self.model_path)  #选择预训练模型
-        options = vision.ImageSegmenterOptions(base_options=base_options, output_category_mask=True) #生成类别遮罩
-        self.segmenter = vision.ImageSegmenter.create_from_options(options)  # 创建分割器
+    def initialize_segmenter(self):  # Initialize the image segmentation model
+        print(f"Resolved model path: {self.model_path}")
+        
+        # Load the model into memory
+        try:
+            with open(self.model_path, "rb") as model_file:
+                model_buffer = model_file.read()
+        except FileNotFoundError as e:
+            print(f"Error: Model file not found at {self.model_path}")
+            raise e
+        
+        # Create options using the model buffer
+        base_options = python.BaseOptions(model_asset_buffer=model_buffer)
+        options = vision.ImageSegmenterOptions(
+            base_options=base_options,
+            output_category_mask=True
+        )
+        # Create the segmenter
+        self.segmenter = vision.ImageSegmenter.create_from_options(options)
 
     def check_background_color(self, image, mask):  
         """
@@ -169,17 +190,17 @@ class ImageSegmentationProcessor:
 
         return is_bluish
 
-    def resize_and_show(self, image):
-        h, w = image.shape[:2]
-        if h < w:
-            img = cv2.resize(image, (self.DESIRED_WIDTH, math.floor(h / (w / self.DESIRED_WIDTH))))
-        else:
-            img = cv2.resize(image, (math.floor(w / (h / self.DESIRED_HEIGHT)), self.DESIRED_HEIGHT))
+    # def resize_and_show(self, image):
+    #     h, w = image.shape[:2]
+    #     if h < w:
+    #         img = cv2.resize(image, (self.DESIRED_WIDTH, math.floor(h / (w / self.DESIRED_WIDTH))))
+    #     else:
+    #         img = cv2.resize(image, (math.floor(w / (h / self.DESIRED_HEIGHT)), self.DESIRED_HEIGHT))
         
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        plt.imshow(img)
-        plt.axis('off')
-        plt.show()
+    #     # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.show()
 
         
     def print_contours(self, contours):
@@ -193,36 +214,31 @@ class ImageSegmentationProcessor:
         # 如果分割器未初始化，则初始化
         if not self.segmenter: 
             self.initialize_segmenter()
-
+        
         # 创建MediaPipe图像
-        mp_image = mp.Image.create_from_file(self.image_path)
-
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
+        
         #获取分割的结果并创建一个透明的遮罩
         segmentation_result = self.segmenter.segment(mp_image)
         category_mask = segmentation_result.category_mask      # 获取类别遮罩 是一个numpy数组，0代表人物 1代表背景
 
         category_mask_array = category_mask.numpy_view()    # 将 category_mask 转换为 NumPy 数组   uint8 类型
         print(category_mask_array.dtype)
-        
 
-       
         overlay = self.image_rgb.copy()  # 创建透明覆盖层
-
         
         alpha = 1 #透明度
-
         
         condition = category_mask_array <= 0.2  # 创建遮罩条件  置信度小于等于0.2 就是False代表人 
-
         
         _, binary_mask = cv2.threshold(category_mask_array, 127, 255, cv2.THRESH_BINARY)
         binary_mask = binary_mask.astype(np.uint8) #二值化数组 0-255 其中0代表人 255代表背景
         binary_mask = cv2.bitwise_not(binary_mask) #取反 方便findContours使用
         
-        plt.imshow(binary_mask, cmap='gray')  # 使用灰度色彩映射
-        plt.axis('off')  # 关闭坐标轴
-        plt.title("Binary Mask Visualization")  # 设置标题
-        plt.show()  # 显示图像
+        # plt.imshow(binary_mask, cmap='gray')  # 使用灰度色彩映射
+        # plt.axis('off')  # 关闭坐标轴
+        # plt.title("Binary Mask Visualization")  # 设置标题
+        # plt.show()  # 显示图像
 
         self.contours, _ = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) #提取所有轮廓而不是外轮廓
         # self.print_contours(self.contours) 打印轮廓坐标
@@ -232,11 +248,11 @@ class ImageSegmentationProcessor:
 
         # 根据背景颜色选择遮罩颜色
         MASK_COLOR = self.ALTERNATIVE_MASK_COLOR if is_blue_background else self.DEFAULT_MASK_COLOR
-
+        
         # 创建彩色遮罩
         colored_mask = np.zeros_like(self.image_rgb)  #创建一个全0的图层 但是大小和image一致
         colored_mask[condition] = MASK_COLOR
-
+        
         # 使用cv2.addWeighted合并原图和遮罩
         self.output_image = cv2.addWeighted(self.image_rgb, 1, colored_mask, alpha, 0)  # 保存到类变量
         
@@ -259,51 +275,13 @@ class ImageSegmentationProcessor:
         return self.output_image
     
 class PoseSegmentationVisualizer:
-    def __init__(self, image):
+    def __init__(self, image, model_path):
         self.pose_analyzer = PoseAnalyzer(image)
-        self.segmentation_processor = ImageSegmentationProcessor(image)
+        self.segmentation_processor = ImageSegmentationProcessor(image, model_path)
         self.intersection_points = []  # 存储交点的列表
         self.widths = {} #储存宽度的字典
         self.bodytype = ""  # 储存身体形状的变量        
         self.result = {}
-        
-    def visualize_specific_landmarks(self, image, landmarks, indices):
-        """
-        在图像上绘制指定的 MediaPipe 关键点。
-        :param image: 要绘制的图像
-        :param landmarks: MediaPipe 关键点列表
-        :param indices: 要绘制的关键点索引列表
-        """
-        for index in indices:
-            if index < len(landmarks):
-                landmark = landmarks[index]
-                x = int(landmark.x * image.shape[1])
-                y = int(landmark.y * image.shape[0])
-                cv2.circle(image, (x, y), 5, (255, 255, 255), -1)  # 红色圆圈表示指定的关键点
-                cv2.putText(image, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-
-    def visualize_combined(self):
-        # 获取遮罩处理后的图像
-        segmented_image = self.segmentation_processor.process_image()
-
-        # 处理姿态分析
-        self.pose_analyzer.process_image()
-        landmarks = self.pose_analyzer.landmarks
-
-        # 在分割图像上绘制姿态关键点
-        for idx, landmark in enumerate(landmarks):
-            x = int(landmark.x * segmented_image.shape[1])
-            y = int(landmark.y * segmented_image.shape[0])
-            cv2.circle(segmented_image, (x, y), 5, (0, 255, 0), -1)
-            cv2.putText(segmented_image, str(idx), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 0), 1)
-
-        # 显示结果
-        plt.figure(figsize=(12, 12))
-        plt.imshow(segmented_image)
-        plt.axis('off')
-        plt.title("Pose and Segmentation Visualization")
-        plt.show()
 
     def calculate_Body_midpoints(self, landmarks):
         # 计算肩部和臀部的中点
@@ -403,18 +381,18 @@ class PoseSegmentationVisualizer:
         else:
             keypoint1 = point1
             keypoint2 = point2
-    
+        
         # 获取关键点的交点
         intersections_1, _ = self.find_nearest_intersections(keypoint1, contours)
         intersections_2, _ = self.find_nearest_intersections(keypoint2, contours)
-    
+        
         # 合并交点并筛选出横坐标在 keypoint1 和 keypoint2 之间的交点
         all_intersections = intersections_1 + intersections_2
         x_min = min(keypoint1['x'], keypoint2['x'])
         x_max = max(keypoint1['x'], keypoint2['x'])
     
         filtered_intersections = [pt for pt in all_intersections if x_min <= pt[0] <= x_max]
-    
+
         # 计算距离
         if len(filtered_intersections) == 2:
             pt1, pt2 = filtered_intersections[:2]
@@ -434,40 +412,47 @@ class PoseSegmentationVisualizer:
             distance = "距离获取失败，请检测环境和光线重新分析"
     
         # 可视化筛选后的交点
-        self.visualize_intersections(keypoint1, filtered_intersections, image)
-        self.visualize_intersections(keypoint2, filtered_intersections, image)
+        # self.visualize_intersections(keypoint1, filtered_intersections, image)
+        # self.visualize_intersections(keypoint2, filtered_intersections, image)
     
         print(f"关键点 {point1} 和 {point2} 之间的轮廓点距离为", distance)
         return filtered_intersections, distance
 
     
-    def visualize_intersections(self, keypoint, intersections, image):
-        # 在图像上绘制关键点、交点和连线
-        x = int(keypoint['x'] * image.shape[1])
-        y = int(keypoint['y'] * image.shape[0])
+    # def visualize_intersections(self, keypoint, intersections, image):
+    #     # 在图像上绘制关键点、交点和连线
+    #     x = int(keypoint['x'] * image.shape[1])
+    #     y = int(keypoint['y'] * image.shape[0])
 
-        # 绘制关键点
-        cv2.circle(image, (x, y), 5, (255, 0, 0), -1)  #Red -- mid_point
+    #     # 绘制关键点
+    #     cv2.circle(image, (x, y), 5, (255, 0, 0), -1)  #Red -- mid_point
 
-        # 绘制交点连线
-        if len(intersections) == 2:
-            pt1 = (int(intersections[0][0] * image.shape[1]),
-                   int(intersections[0][1] * image.shape[0]))
-            pt2 = (int(intersections[1][0] * image.shape[1]),
-                   int(intersections[1][1] * image.shape[0]))
-            cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+    #     # 绘制交点连线
+    #     if len(intersections) == 2:
+    #         pt1 = (int(intersections[0][0] * image.shape[1]),
+    #                int(intersections[0][1] * image.shape[0]))
+    #         pt2 = (int(intersections[1][0] * image.shape[1]),
+    #                int(intersections[1][1] * image.shape[0]))
+    #         cv2.line(image, pt1, pt2, (0, 255, 0), 2)
 
-        # 绘制交点
-        for intersection in intersections:
-            ix = int(intersection[0] * image.shape[1])
-            iy = int(intersection[1] * image.shape[0])
-            cv2.circle(image, (ix, iy), 5, (255, 255, 0), -1)
+    #     # 绘制交点
+    #     for intersection in intersections:
+    #         ix = int(intersection[0] * image.shape[1])
+    #         iy = int(intersection[1] * image.shape[0])
+    #         cv2.circle(image, (ix, iy), 5, (255, 255, 0), -1)
 
 
         
     def determine_body_shape(self, shoulder_width, waist_width, hip_width):
+         # Validate inputs and handle None values
+        if shoulder_width is None or shoulder_width == 0:
+            return "Unknown"
+        if waist_width is None or waist_width <= 0:
+            return "Unknown"
+        if hip_width is None or hip_width <= 0:
+            return "Unknown"
+
         # 判断身体形状
-        
         shoulder_ratio = 1  # 以肩围为标准
         waist_ratio = waist_width / shoulder_width
         hip_ratio = hip_width / shoulder_width
@@ -527,7 +512,6 @@ class PoseSegmentationVisualizer:
     def process_and_visualize(self):
         # 获取遮罩处理后的图像
         segmented_image = self.segmentation_processor.process_image()
-
         # 处理姿态分析
         self.pose_analyzer.process_image()
         landmarks = self.pose_analyzer.landmarks
@@ -561,15 +545,20 @@ class PoseSegmentationVisualizer:
             "waist_width": waist_mid,
             "hip_width": hip_mid
         }
-
+        
         # 计算并可视化交点
         for key, keypoint in keypoints.items():
             intersections, distances = self.find_nearest_intersections(keypoint, contours)
+            
             # print(f"Keypoint: {keypoint}, Intersections: {intersections}, Distances: {distances}") 
             # self.visualize_intersections(keypoint, intersections, segmented_image)
             
             
             self.widths[key] = distances  #储存腰围和 臀围、胸围
+        
+        print(self.widths.get("shoulder_width", 0))
+        print(self.widths.get("waist_width", 0))
+        print(self.widths.get("hip_width", 0))
         
         # 使用宽度信息判断身体形状
         self.bodytype = self.determine_body_shape(
@@ -577,25 +566,30 @@ class PoseSegmentationVisualizer:
             self.widths.get("waist_width", 0),
             self.widths.get("hip_width", 0)
         )
-        self.result["身材类型"] = self.bodytype
-
-        # # 可视化指定的关键点
-        # specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
-        # self.visualize_specific_landmarks(segmented_image, landmarks, specific_landmarks)
-
-        # 计算膝盖和脚踝的交点和距离
-        _, distance_lap = self.calculate_intersections(25, 26, contours, segmented_image, landmarks)
-        _, distance_ankles = self.calculate_intersections(27, 28, contours, segmented_image, landmarks)
-    
-        # 计算小腿中间点
-        right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28]) #字典形式{"x":x,"y":y}
-        left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
         
-        # 计算小腿交点距离
-        _, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
+        if (self.bodytype is not "Unknown"):
+            self.result["身材类型"] = self.bodytype
+            
+            # # 可视化指定的关键点
+            # specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
+            # self.visualize_specific_landmarks(segmented_image, landmarks, specific_landmarks)
+            
+            # 计算膝盖和脚踝的交点和距离
+            _, distance_lap = self.calculate_intersections(25, 26, contours, segmented_image, landmarks)
+            _, distance_ankles = self.calculate_intersections(27, 28, contours, segmented_image, landmarks)
+            # 计算小腿中间点
+            right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28]) #字典形式{"x":x,"y":y}
+            left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
+            
+            # 计算小腿交点距离
+            _, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
 
-        # 分析腿型
-        leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
-        self.result["腿型"] = leg_shape
+            # 分析腿型
+            leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
+            self.result["腿型"] = leg_shape
+        
+        else:
+            self.result["身材类型"] = self.bodytype
+            self.result["腿型"] = "Unknown"
 
         return self.result

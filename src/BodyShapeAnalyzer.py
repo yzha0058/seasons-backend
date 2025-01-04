@@ -253,18 +253,18 @@ class ImageSegmentationProcessor:
         print(f'使用了{color_used}遮罩，因为背景{"是" if is_blue_background else "不是"}蓝色的')
 
         # 显示结果
-        self.resize_and_show(self.output_image)
+        # self.resize_and_show(self.output_image)
 
         # 返回处理后的图像
         return self.output_image
     
 class PoseSegmentationVisualizer:
-    def __init__(self, pose_image_path):
-        self.pose_analyzer = PoseAnalyzer(pose_image_path)
-        self.segmentation_processor = ImageSegmentationProcessor(pose_image_path)
+    def __init__(self, image):
+        self.pose_analyzer = PoseAnalyzer(image)
+        self.segmentation_processor = ImageSegmentationProcessor(image)
         self.intersection_points = []  # 存储交点的列表
         self.widths = {} #储存宽度的字典
-        self.bodytype = ""  # 储存身体形状的变量
+        self.bodytype = ""  # 储存身体形状的变量        
         self.result = {}
         
     def visualize_specific_landmarks(self, image, landmarks, indices):
@@ -538,9 +538,9 @@ class PoseSegmentationVisualizer:
         
         pt1 = (int(landmarks[11].x * segmented_image.shape[1]), int(landmarks[11].y * segmented_image.shape[0]))
         pt2 = (int(landmarks[12].x * segmented_image.shape[1]), int(landmarks[12].y * segmented_image.shape[0]))
-        cv2.circle(segmented_image, pt1, 5, (255, 255, 255), -1)
-        cv2.circle(segmented_image, pt2, 5, (255, 255, 255), -1)
-        cv2.line(segmented_image, pt1, pt2, (0, 255, 0), 2)
+        # cv2.circle(segmented_image, pt1, 5, (255, 255, 255), -1)
+        # cv2.circle(segmented_image, pt2, 5, (255, 255, 255), -1)
+        # cv2.line(segmented_image, pt1, pt2, (0, 255, 0), 2)
 
         
         # 计算中点
@@ -566,7 +566,7 @@ class PoseSegmentationVisualizer:
         for key, keypoint in keypoints.items():
             intersections, distances = self.find_nearest_intersections(keypoint, contours)
             # print(f"Keypoint: {keypoint}, Intersections: {intersections}, Distances: {distances}") 
-            self.visualize_intersections(keypoint, intersections, segmented_image)
+            # self.visualize_intersections(keypoint, intersections, segmented_image)
             
             
             self.widths[key] = distances  #储存腰围和 臀围、胸围
@@ -579,31 +579,23 @@ class PoseSegmentationVisualizer:
         )
         self.result["身材类型"] = self.bodytype
 
-        # 可视化指定的关键点
-        specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
-        self.visualize_specific_landmarks(segmented_image, landmarks, specific_landmarks)
+        # # 可视化指定的关键点
+        # specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
+        # self.visualize_specific_landmarks(segmented_image, landmarks, specific_landmarks)
 
         # 计算膝盖和脚踝的交点和距离
-        filtered_intersections_Lap, distance_lap = self.calculate_intersections(25, 26, contours, segmented_image, landmarks)
-        filtered_intersections_ankles, distance_ankles = self.calculate_intersections(27, 28, contours, segmented_image, landmarks)
+        _, distance_lap = self.calculate_intersections(25, 26, contours, segmented_image, landmarks)
+        _, distance_ankles = self.calculate_intersections(27, 28, contours, segmented_image, landmarks)
     
         # 计算小腿中间点
         right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28]) #字典形式{"x":x,"y":y}
         left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
         
         # 计算小腿交点距离
-        filtered_intersections_calf, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
+        _, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
 
         # 分析腿型
         leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
         self.result["腿型"] = leg_shape
-        print("Leg Shape:", leg_shape)
-    
-        # 显示结果
-        plt.figure(figsize=(12, 12))
-        plt.imshow(self.segmentation_processor.output_image)
-        plt.axis('off')
-        plt.title("Pose and Body type Analysis")
-        plt.show()
 
         return self.result

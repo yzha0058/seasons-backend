@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from flask import session
-from BodyShapeAnalyzer import PoseAnalyzer
+from src.BodyShapeAnalyzer import PoseAnalyzer
 
 class FaceVolumeAnalyzer:
     def __init__(self, image, height_cm, lip_curve, nose_curve, eye_curve, face_curve, ratio_1, ratio_5):

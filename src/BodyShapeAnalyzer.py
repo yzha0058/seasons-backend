@@ -567,7 +567,7 @@ class PoseSegmentationVisualizer:
             self.widths.get("hip_width", 0)
         )
         
-        if (self.bodytype is not "Unknown"):
+        if (self.bodytype != "Unknown"):
             self.result["身材类型"] = self.bodytype
             
             # # 可视化指定的关键点

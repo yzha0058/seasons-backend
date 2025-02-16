@@ -5,6 +5,7 @@ import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
 from flask import Flask, request, jsonify
+from flask import session
 import traceback
 from flask_cors import CORS  # Import CORS
 from src.LipShapeAnalyzer import LipShapeAnalyzer
@@ -14,6 +15,7 @@ from src.BodyShapeAnalyzer import PoseAnalyzer
 from src.BodyShapeAnalyzer import ImageSegmentationProcessor
 from src.BodyShapeAnalyzer import PoseSegmentationVisualizer
 from src.FaceShapeAnalyzer import FaceAnalyzer
+from src.FaceVolumeAnalyzer import FaceVolumeAnalyzer
 
 from aliyun_upload import upload_to_oss
 
@@ -96,6 +98,22 @@ def body_analyze():
         waist = data.get("waist")
         hips = data.get("hips")
 
+        # 检查必需的数据是否存在。
+        # 【这里三围如果没输入是否可以跳过？身材分析determine_body_shape没有用到三围】 
+        # 或者有三围可以直接计算身材？
+        missing_data = []
+        if height is None:
+            missing_data.append("身高")
+        if chest is None:
+            missing_data.append("胸围")
+        if waist is None:
+            missing_data.append("腰围")
+        if hips is None:
+            missing_data.append("臀围")
+
+        if missing_data:
+            return jsonify({"error": f"缺少必要的数据: {', '.join(missing_data)}"}), 400
+        
         print("-----------------------------------------------")
         print(height, chest, waist, hips)
         print("-----------------------------------------------")
@@ -114,12 +132,50 @@ def body_analyze():
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if image is None:
             return jsonify({"error": "Failed to decode image"}), 400
+        
+        # 处理用户输入的身高
+        user_height = height
+        if not user_height:
+            return jsonify({"error": "No height data provided"}), 400
+        user_height = float(user_height)
 
+        # 从 session 读取 ratio_1 和 ratio_5
+        ratio_1 = session.get("ratio_1")
+        ratio_5 = session.get("ratio_5")
+        lip_curve = session.get("lip_curve")
+        nose_curve = session.get("nose_curve")
+        eye_curve = session.get("eye_curve")
+        face_curve = session.get("face_curve")
+        # 检查缺失数据
+        missing_data1 = []
+
+        if ratio_1 is None:
+            missing_data1.append("ratio_1")
+        if ratio_5 is None:
+            missing_data1.append("ratio_5")
+        if lip_curve is None:
+            missing_data1.append("lip_curve")
+        if nose_curve is None:
+            missing_data1.append("nose_curve")
+        if eye_curve is None:
+            missing_data1.append("eye_curve")
+        if face_curve is None:
+            missing_data1.append("face_curve")
+
+        # 如果有缺失的数据，返回具体的缺失项
+        if missing_data1:
+            return jsonify({"error": f"Missing data in session: {', '.join(missing_data1)}"}), 400
+        
         # Analyze body shape
         body_analyzer = PoseAnalyzer(image)
         body_analyzer.analyze()
         body_analyzer.image = image  # 使用已经解码的图像
         body_analyzer.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        
+        # 运行量感分析
+        face_volume_analyzer = FaceVolumeAnalyzer(image, user_height, lip_curve, nose_curve, eye_curve, face_curve, ratio_1, ratio_5)
+        volume_result = face_volume_analyzer.analyze()
 
         #修改
         try:
@@ -141,6 +197,14 @@ def body_analyze():
                 "三围比例": three_d_model.result.get('身材比例(肩：腰：臀)', '未知'),
                 "身材类型": three_d_model.result.get('身材类型', '未知'),
                 "腿型": three_d_model.result.get('腿型', '未知'),
+            },            
+            "face_volume_analysis": volume_result,
+            "face_volume_info": {
+                "量感分析": volume_result.get('量感分析', '未知'),
+                "脸大脸小": volume_result.get('脸大脸小', '未知'),
+                "面部留白": volume_result.get('面部留白', '未知'),
+                "综合曲直": volume_result.get('综合曲直', '未知'),
+                "推荐风格": volume_result.get('推荐风格', '未知'),
             },
         }
 
@@ -176,6 +240,9 @@ def face_analyze():
         lip_analyzer = LipShapeAnalyzer(image)
         lip_analyzer.detect_landmarks()
         lip_analyzer.analyze_lip_shape()
+        # 嘴唇曲直结果
+        lip_curve = lip_analyzer.result.get('曲直结果', '未知')
+
 
         # Analyze the nose shape
         nose_analyzer = NoseAnalyzer(image)
@@ -188,22 +255,38 @@ def face_analyze():
         nose_analyzer.analyze_nose_wing_curvature()
         # 4. ** The final analysis results **
         nose_analyzer.visualize_nose_bridge_analysis() #***
+        # 鼻子曲直结果
+        nose_curve = nose_analyzer.result.get('鼻型综合曲直', '未知')
 
         # Analyze eye shape
         eye_analyzer = EyeShapeAnalyzer(image)
         eye_analyzer.detect_landmarks()
         eye_analyzer.analyze_eye_shape()
+        # 眼睛曲直结果
+        eye_curve = eye_analyzer.result.get('眼型曲直综合', '未知')
 
         # FaceShapeAnalyze 三庭五眼和气质
         face_analyzer = FaceAnalyzer(image)
         face_analyzer.analyze()
+        # 脸型曲直结果
+        face_curve = face_analyzer.result.get('脸型曲直', '未知')
 
-        # # Analyze body shape
-        # body_analyzer = BodyShapeAnalyzer(image=None)
-        # body_analyzer.image = image  # 使用已经解码的图像
-        # body_analyzer.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        # body_analyzer.calculate_head_shoulder_ratio()
-        # body_analyzer.calculate_body_proportion()
+        # 提取五眼比例
+        five_eye_ratio_str = face_analyzer.result.get("五眼比例", "1 : 1 : 1 : 1 : 1")  # 避免数据丢失
+        five_eye_ratios = [float(x.strip()) for x in five_eye_ratio_str.split(":")]
+
+        # 计算 ratio_1 和 ratio_5
+        ratio_1 = five_eye_ratios[0]  # 第一个数
+        ratio_5 = five_eye_ratios[-1]  # 最后一个数
+
+        # 存入 Flask session
+        session["ratio_1"] = ratio_1
+        session["ratio_5"] = ratio_5
+        session["lip_curve"] = lip_curve
+        session["nose_curve"] = nose_curve
+        session["eye_curve"] = eye_curve
+        session["face_curve"] = face_curve
+
       
         # Collect the analysis results
         result = {

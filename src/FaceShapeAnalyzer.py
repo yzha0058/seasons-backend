@@ -11,6 +11,7 @@ class FaceAnalyzer:
         self.image_rgb = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
         self.landmarks = None  # 存储提取到的关键点
         self.result = {}  # 用于存储分析结果
+        self.face_ratios = None
 
         # 初始化YOLO模型（确保'yolov8n-face.pt'文件存在）
         self.yolo_model = YOLO('yolov8n-face.pt')
@@ -22,7 +23,7 @@ class FaceAnalyzer:
         self.y_bottom = self.image.shape[0]
 
     def detect_face_with_yolo(self):
-        """使用YOLO检测人脸,并保存检测到的人脸框坐标"""
+        """使用YOLO检测人脸, 并保存检测到的人脸框坐标"""
         results = self.yolo_model(self.image_path)
         if results[0].boxes:
             box = results[0].boxes[0]  # 假设只分析第一张人脸
@@ -80,8 +81,6 @@ class FaceAnalyzer:
         if region_2_width == 0:
             raise ValueError("Region width is zero, cannot calculate ratios.")
 
-        # 按照之前示例,将中间的两个区当做基准为1
-        # 如果您希望与之前的代码保持一致,可自行调整
         ratio_1 = round(region_1_width / region_2_width, 2)
         ratio_2 = 1
         ratio_3 = round(region_3_width / region_2_width, 2) # 之前代码中是设定中间两眼为1:1:1:...
@@ -144,9 +143,6 @@ class FaceAnalyzer:
         face_length_ratio = round(face_length / cheekbone_width, 2)
 
         
-
-        print(f"三线比例 (额头: 颧骨 : 下颌) = {forehead_ratio} : 1 : {jaw_ratio}")
-        print(f"脸长和脸宽的比例: {face_length_ratio}")
         self.result["三线比例"] = f"{forehead_ratio} : 1 : {jaw_ratio}"
         self.result["脸长和脸宽的比例"] = f"{face_length_ratio}"
 
@@ -175,7 +171,7 @@ class FaceAnalyzer:
         # 判断下巴形状
         if chin_length_width_ratio < 2.27:
             chin_type = "锐弧（尖形下巴）"
-        elif 2.27 <= chin_length_width_ratio <= 2.8:
+        elif 2.27 <= chin_length_width_ratio <= 2.86:
             chin_type = "钝弧（圆形下巴）"
         else:
             chin_type = "机器人下巴（方形下巴）"
@@ -206,54 +202,72 @@ class FaceAnalyzer:
         face_shape = ""
 
 
-        # 如果颧骨最宽,并且和额头、下颌的比例差小于0.11,下巴不是锐弧,那么就是方形脸或者方菱脸
+        # 如果颧骨最宽，并且和额头、下颌的比例差小于0.11，下巴不是锐弧，那么就是方形脸或者方菱脸
         if (cheekbone_width > forehead_width and cheekbone_width > jaw_width):
             if (abs(cheekbone_width - forehead_width) / cheekbone_width <= 0.11) and (abs(cheekbone_width - jaw_width) / cheekbone_width <= 0.11):
                 if chin_type != "锐弧（尖形下巴）":
+                        
                     if ratio_1 < 0.75 and ratio_5 < 0.75:
                         face_shape = "方菱脸"
-                    elif ratio_1 < 0.75 or ratio_5 < 0.75:
-                        face_shape = "方形脸,轻度菱形"
+                        
+                    elif (ratio_1 < 0.75 or ratio_5 < 0.75) and not (abs(forehead_width - jaw_width)/cheekbone_width <= 0.03):
+                        face_shape = "方形脸, 轻度菱形"
+
+                    elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (1.338 < face_length_ratio <= 1.6):
+                        face_shape = "方形脸, 偏椭圆"
+                        
+                    elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (face_length_ratio <= 1.338):
+                        face_shape = "方形脸, 偏圆"
+                        
                     else:
                         face_shape = "方形脸"
                 else:
-                    face_shape = "甲子脸" #比例相近的情况下,下巴是尖的
+                    face_shape = "甲子脸" #比例相近的情况下，下巴是尖的
             else:   
-                #这里可能颧骨明显宽了
+                #这里颧骨明显宽了，正常情况不可能颧骨比其他两线短； 1 颧骨和上额差不多长，上额和下颌差距大/小 2 颧骨和下颌差不多，上额小
+                
                 # 菱形脸（伴随太阳穴凹陷）判断 ratio_1 < 0.7 且 ratio_5 < 0.7
                 if ratio_1 < 0.75 and ratio_5 < 0.75:
                     face_shape = "菱形脸"
-                # 颧骨最大但不是菱形脸,进入第一套 椭圆/圆/方判断
+                # 颧骨最大但不是菱形脸，进入第一套 椭圆/圆/方判断
                 
                 # 椭圆脸（鹅蛋脸） 
-                # 条件：额头和下颌接近,face_length_ratio在[1.4,1.6],下巴不为机器人下巴
-                elif abs(forehead_width - jaw_width) < 0.10 * forehead_width and (1.36 < face_length_ratio <= 1.6) and (chin_type != "机器人下巴（方形下巴）"):
+                # 条件：额头和下颌接近，face_length_ratio在[1.338,1.6]，下巴不为机器人下巴
+                elif abs(forehead_width - jaw_width) < 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6) and (chin_type != "机器人下巴（方形下巴）"):
                     face_shape = "椭圆脸（鹅蛋脸）"
 
-                #倒三角脸判断 额头和颧骨相差不多时,额头明显大于下颌 宽额头对应倒三角   下巴不为机器人下巴
-                elif (forehead_width > jaw_width) and abs(forehead_width - jaw_width) > 0.10 * forehead_width and (1.36 < face_length_ratio <= 1.6):
+                #倒三角脸判断 额头和颧骨相差不多时，额头明显大于下颌 宽额头对应倒三角   下巴不为机器人下巴
+                elif (forehead_width > jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6):
                     if chin_type != "机器人下巴（方形下巴）":
                         face_shape = "倒三角脸"
                     else:
                         face_shape = "甲子脸"
 
-                # 额头明显比下颌小,窄额头对应菱形脸
-                elif (forehead_width < jaw_width) and abs(forehead_width - jaw_width) > 0.10 * forehead_width and (1.36 < face_length_ratio <= 1.6):
+                # 额头明显比下颌小，窄额头对应菱形脸
+                elif (forehead_width < jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6):
                         face_shape = "菱形脸"
                 
                 # 圆形脸
                 # 条件：额头宽度与下颌宽度差在额头宽度10%以内、脸长宽比例<1.4、下巴为钝弧（圆下巴）
-                elif (abs(forehead_width - jaw_width) < 0.15 * forehead_width) and (face_length_ratio <= 1.36) and (chin_type == "钝弧（圆形下巴）"):
+                elif (abs(forehead_width - jaw_width) < 0.11 * forehead_width) and (face_length_ratio <= 1.338) and (chin_type == "钝弧（圆形下巴）"):
                     face_shape = "圆形脸"
                     
+                elif (abs(cheekbone_width - forehead_width) / cheekbone_width <= 0.11) and (abs(forehead_width - jaw_width) >= 0.11 * forehead_width) :
+                    face_shape = "甲子脸"
+
+                else:
+                    if chin_type != "锐弧（尖形下巴）":
+                        face_shape = "方菱脸"
+                    else:
+                        face_shape = "倒三角脸"
 
 
 
 
                     
         else:
-            # 颧骨不是最大,进入第二套判断：
-            # 不考虑颧骨最小的情况,就只有额头大于颧骨大于下颌,或者下颌大于颧骨大于额头两种情况,外加一个长脸
+            # 颧骨不是最大，进入第二套判断：
+            # 不考虑颧骨最小的情况，就只有额头大于颧骨大于下颌，或者下颌大于颧骨大于额头两种情况，外加一个长脸
             # 方形脸（第二次出现）
 
             #下颌大于颧骨的情况
@@ -264,12 +278,12 @@ class FaceAnalyzer:
                   if (chin_type == "锐弧（尖形下巴）"):
                         face_shape = "方形脸"
                 
-            #下颌和颧骨约等,在0.1内,下巴钝弧--方形脸    
+            #下颌和颧骨约等，在0.1内，下巴钝弧--方形脸    
                   elif (jaw_width - cheekbone_width)/jaw_width <= 0.1 and (chin_type == "钝弧（圆形下巴）"):
                         face_shape = "方形脸"
                 
                     
-                #下颌大于等于颧骨,下巴是机器人下巴,或者下颌不大于颧骨0.1,下巴是钝弧,梨形脸
+                #下颌大于等于颧骨，下巴是机器人下巴，或者下颌不大于颧骨0.1，下巴是钝弧，梨形脸
                   elif (chin_type == "机器人下巴（方形下巴）") or ( (jaw_width - cheekbone_width)/jaw_width >= 0.1 and (chin_type == "钝弧（圆形下巴）")):
                         face_shape = "梨形脸"   
                       
@@ -282,19 +296,19 @@ class FaceAnalyzer:
                         face_shape = "方形脸"
 
                 
-            # 梨形脸：下颌宽 ≥ 颧骨宽或者下颌宽≥额头宽（根据原逻辑,下颌相对更宽）
+            # 梨形脸：下颌宽 ≥ 颧骨宽或者下颌宽≥额头宽（根据原逻辑，下颌相对更宽）
                 
 
 
             
         # 判断脸型
         if face_shape == "":
-            face_shape = "请检查光线和摄像头角度并重新拍照,或咨询工作人员"
+            face_shape = "请检查光线和摄像头角度并重新拍照，或咨询工作人员"
             face_curve_straight = "未知"
         else:
-            # 判断脸型的曲直
-            curved_faces = ["圆形脸", "梨形脸", "椭圆脸（鹅蛋脸）"]
-            straight_faces = ["倒三角脸", "方形脸", "菱形脸", "方菱脸", "长脸", "甲子脸"]
+            # 判断脸型的曲直 添加了方形脸类型
+            curved_faces = ["圆形脸", "梨形脸", "椭圆脸（鹅蛋脸）","方形脸, 偏椭圆","方形脸, 偏圆"]
+            straight_faces = ["倒三角脸", "方形脸", "菱形脸", "方菱脸", "长脸", "甲子脸","方形脸, 轻度菱形"]
             
             if face_shape in curved_faces:
                 face_curve_straight = "偏曲"
@@ -303,7 +317,7 @@ class FaceAnalyzer:
             else:
                 face_curve_straight = "未知"
 
-        self.result["脸型判断结果"] = f"{face_shape}"
+        self.result["脸型判断结果"] = face_shape
         self.result["脸型曲直"] = face_curve_straight
 
 
@@ -339,11 +353,11 @@ class FaceAnalyzer:
         elif abs(ratios[0] - 1) <= tolerance and (ratios[1] > 1.3): 
             three_ratios_type = "长中庭, 气质脸" 
         
-        #上庭和中庭相近,下庭短
+        #上庭和中庭相近，下庭短
         elif abs(ratios[0] - 1) <= tolerance and abs(ratios[1] - 1) <= tolerance and (ratios[2]< 0.7): 
             three_ratios_type = "可爱娃娃脸" 
             
-        #上庭和中庭相近,下庭长
+        #上庭和中庭相近，下庭长
         elif abs(ratios[0] - 1) <= tolerance and abs(ratios[1] - 1) <= tolerance and (ratios[2]> 1.1): 
             three_ratios_type = "英气脸" 
             
@@ -368,13 +382,13 @@ class FaceAnalyzer:
         self.calculate_five_eyes()
         # 在确定三庭比例类型前需要先计算三庭比例
         # determine_three_ratios_type中已经会调用calculate_three_ratios
-        # 这里可以不必重复调用calculate_three_ratios,但为了与之前代码一致性保留一次
+        # 这里可以不必重复调用calculate_three_ratios，但为了与之前代码一致性保留一次
         self.calculate_three_ratios()  
         self.calculate_face_ratios()   # 计算脸长/脸宽比例等
         # 下巴形状和脸型在determine_face_shape()中会重复调用calculate_face_ratios和analyze_chin_shape
-        # 为避免重复调用,这里可直接调用但请注意代码重复执行逻辑
+        # 为避免重复调用，这里可直接调用但请注意代码重复执行逻辑
         # 我们这里先调用下巴形状和脸型判断
-        # 注意：determine_face_shape里已经调用了analyze_chin_shape和calculate_face_ratios,会再次执行,但不影响最终结果
+        # 注意：determine_face_shape里已经调用了analyze_chin_shape和calculate_face_ratios，会再次执行，但不影响最终结果
         self.determine_face_shape()
         self.determine_three_ratios_type()
         print(self.result)
@@ -395,11 +409,3 @@ class FaceAnalyzer:
         plt.imshow(self.image_rgb)
         plt.axis('off')  # 隐藏坐标轴
         plt.show()
-
-
-## 初始化分析器
-# image_path = "images/faceshape/方脸/素人3.jpg" #eimages/SCUT-FBP-141.jpg images/body_images/517.jpg
-# face_analyzer = FaceAnalyzer(image_path)
-# face_analyzer.analyze()
-# face_analyzer.visualize_original_image()
-# face_analyzer.visualize_results()

@@ -34,9 +34,12 @@ model = YOLO('yolov8n-face.pt')  # You can use other YOLOv8 models, like 'yolov8
 # def body_analyze(image):
 #     return
 
-@app.route('/pdf-upload', methods=['GET'])
+@app.route('/pdf-upload', methods=['POST'])
 def pdf_upload():
-    result = upload_to_oss()
+    data = request.json  # Get request JSON
+    user_id = data.get('user_id')  # Example of processing input
+
+    result = upload_to_oss(user_id)
     return jsonify(result)
 
 @app.route('/mediapipe-detect', methods=['POST'])
@@ -87,6 +90,15 @@ def body_analyze():
     try:
         result = {}
         data = request.get_json()
+
+        height = data.get("height")
+        chest = data.get("chest")
+        waist = data.get("waist")
+        hips = data.get("hips")
+
+        print("-----------------------------------------------")
+        print(height, chest, waist, hips)
+        print("-----------------------------------------------")
 
         # Decode the base64 image data
         image_data = data.get("image")

@@ -33,7 +33,7 @@ def hmacsha256(key, data):
         raise RuntimeError(f"Failed to calculate HMAC-SHA256 due to {e}")
 
 # Function to handle the file upload to OSS
-def upload_to_oss():
+def upload_to_oss(user_id):
     # Initialize STS client and get temporary credentials
     config = Config(
         region_id=region_id,

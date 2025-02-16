@@ -1,12 +1,13 @@
 import base64
 import cv2
 import math
+import os
 import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
-from flask import Flask, request, jsonify
-from flask import session
+from flask import Flask, request, jsonify, session
 import traceback
+from flask_session import Session
 from flask_cors import CORS  # Import CORS
 from src.LipShapeAnalyzer import LipShapeAnalyzer
 from src.NoseShapeAnalyzer import NoseAnalyzer
@@ -16,10 +17,24 @@ from src.BodyShapeAnalyzer import ImageSegmentationProcessor
 from src.BodyShapeAnalyzer import PoseSegmentationVisualizer
 from src.FaceShapeAnalyzer import FaceAnalyzer
 from src.FaceVolumeAnalyzer import FaceVolumeAnalyzer
-
+from datetime import timedelta
 from aliyun_upload import upload_to_oss
 
 app = Flask(__name__)
+# 设置 Flask `session` 存储
+app.config["SECRET_KEY"] = "seasons"  # 设置 SECRET_KEY 以支持加密
+app.config["SESSION_TYPE"] = "filesystem"  # 让 session 存在服务器文件系统
+app.config["SESSION_PERMANENT"] = True  # 让 session 在多个请求之间持久化
+app.config["SESSION_FILE_DIR"] = "./flask_session"  # 指定 session 存储位置
+app.config["SESSION_USE_SIGNER"] = True  # 让 session 加密，增强安全性
+
+if not os.path.exists("./flask_session"):
+    os.makedirs("./flask_session")
+
+Session(app)  # 初始化 session
+
+print("Flask SESSION_TYPE:", app.config["SESSION_TYPE"])
+
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制16MB
 CORS(app)  # Enable CORS for all routes
 # You can also restrict it to a specific origin:
@@ -139,6 +154,8 @@ def body_analyze():
             return jsonify({"error": "No height data provided"}), 400
         user_height = float(user_height)
 
+        print("Current session data:", dict(session))  # 打印 session 内容，检查数据是否存在
+
         # 从 session 读取 ratio_1 和 ratio_5
         ratio_1 = session.get("ratio_1")
         ratio_5 = session.get("ratio_5")
@@ -236,12 +253,16 @@ def face_analyze():
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
+        
+        # 设置 session 的过期时间
+        session.permanent = True  # 让 session 在多个请求之间持久化
+        app.permanent_session_lifetime = timedelta(minutes=30)  # 设置 session 存活时间 30 分钟
+
         # Analyze the lip shape
         lip_analyzer = LipShapeAnalyzer(image)
         lip_analyzer.detect_landmarks()
         lip_analyzer.analyze_lip_shape()
-        # 嘴唇曲直结果
-        lip_curve = lip_analyzer.result.get('曲直结果', '未知')
+        lip_curve = lip_analyzer.result.get('曲直结果', '未知') # 嘴唇曲直结果
 
 
         # Analyze the nose shape
@@ -255,21 +276,18 @@ def face_analyze():
         nose_analyzer.analyze_nose_wing_curvature()
         # 4. ** The final analysis results **
         nose_analyzer.visualize_nose_bridge_analysis() #***
-        # 鼻子曲直结果
-        nose_curve = nose_analyzer.result.get('鼻型综合曲直', '未知')
+        nose_curve = nose_analyzer.result.get('鼻型综合曲直', '未知') # 鼻子曲直结果
 
         # Analyze eye shape
         eye_analyzer = EyeShapeAnalyzer(image)
         eye_analyzer.detect_landmarks()
         eye_analyzer.analyze_eye_shape()
-        # 眼睛曲直结果
-        eye_curve = eye_analyzer.result.get('眼型曲直综合', '未知')
+        eye_curve = eye_analyzer.result.get('眼型曲直综合', '未知') # 眼睛曲直结果
 
         # FaceShapeAnalyze 三庭五眼和气质
         face_analyzer = FaceAnalyzer(image)
         face_analyzer.analyze()
-        # 脸型曲直结果
-        face_curve = face_analyzer.result.get('脸型曲直', '未知')
+        face_curve = face_analyzer.result.get('脸型曲直', '未知') # 脸型曲直结果  
 
         # 提取五眼比例
         five_eye_ratio_str = face_analyzer.result.get("五眼比例", "1 : 1 : 1 : 1 : 1")  # 避免数据丢失
@@ -286,8 +304,9 @@ def face_analyze():
         session["nose_curve"] = nose_curve
         session["eye_curve"] = eye_curve
         session["face_curve"] = face_curve
+        session.modified = True
 
-      
+
         # Collect the analysis results
         result = {
             "lip_shape": lip_analyzer.result, 
@@ -336,6 +355,8 @@ def face_analyze():
 
             #  "body_shape_info": body_analyzer.result
         }
+
+        print("Session after face-analyze:", dict(session))  # 打印 session 数据
 
         return jsonify(result), 200
 

@@ -10,49 +10,49 @@ FONT_PATH = "font/SourceHanSans-VF.ttf.ttc"  # Common path on Linux
 pdfmetrics.registerFont(TTFont("SourceHanSans", FONT_PATH))  # Register font
 
 def generate_pdf(result):
-    buffer = io.BytesIO()  # Use an in-memory buffer
+    buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
-    
+
     pdf.setTitle("Face Analysis Report")
     pdf.setFont("SourceHanSans", 16)
 
-    # Set starting position
-    x_start = 50
-    y_start = 800
-    
-    pdf.setFont("SourceHanSans", 16)
-    pdf.drawString(x_start, y_start, "Face Analysis Report")
-    pdf.setFont("SourceHanSans", 12)
-    
-    y_start -= 30  # Move down
+    x_start, y_start = 50, 800
 
     def draw_section(title, data):
-        """ Helper function to write a section in the PDF """
+        """ Helper function to write a section in the PDF with Chinese support """
         nonlocal y_start
         pdf.setFont("SourceHanSans", 14)
         pdf.drawString(x_start, y_start, title)
         y_start -= 20
-        
+
         pdf.setFont("SourceHanSans", 12)
         for key, value in data.items():
+            if isinstance(value, list):  # Convert list to string
+                value = ", ".join(value)
+            elif isinstance(value, dict):  # Convert dict to readable format
+                value = ", ".join([f"{k}: {v}" for k, v in value.items()])
+
             pdf.drawString(x_start + 20, y_start, f"{key}: {value}")
             y_start -= 20
             if y_start < 50:  # Avoid writing out of bounds
                 pdf.showPage()
-                y_start = 800  # Reset for new page
-        
-        y_start -= 10  # Add spacing
-    
-   # Draw sections
-    draw_section("身体分析结果", result["body_shape"])
-    draw_section("详细身体信息", result["Body_detailed_info"])
-    draw_section("三维模型分析", result["three_d_model"])
-    draw_section("三维模型信息", result["three_d_model_info"])
-    draw_section("面部体积分析", result["face_volume_analysis"])
-    draw_section("面部体积信息", result["face_volume_info"])
-    
+                pdf.setFont("SourceHanSans", 12)
+                y_start = 800
+
+        y_start -= 10
+
+    # Draw sections using example data
+    draw_section("脸型分析", result["Face_shape"])
+    draw_section("脸型详细信息", result["Face_shape_info"])
+    draw_section("唇部详细信息", result["Lips_detailed_info"])
+    draw_section("眼部详细信息", result["eye_detailed_info"])
+    draw_section("眼型分析", result["eye_shape"])
+    draw_section("唇型分析", result["lip_shape"])
+    draw_section("鼻部详细信息", result["nose_detailed_info"])
+    draw_section("鼻型分析", result["nose_shape"])
+
     pdf.showPage()
     pdf.save()
-    
+
     buffer.seek(0)
     return buffer

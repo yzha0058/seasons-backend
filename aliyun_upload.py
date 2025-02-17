@@ -10,6 +10,7 @@ from alibabacloud_tea_openapi.models import Config
 from alibabacloud_sts20150401.client import Client as Sts20150401Client
 from alibabacloud_sts20150401 import models as sts_20150401_models
 from dotenv import load_dotenv
+from pdf_generate import generate_pdf
 
 load_dotenv()
 
@@ -89,6 +90,41 @@ def upload_to_oss(user_id):
     # Generate signature
     result = hmacsha256(signing_key, base64_policy)
     signature = result.hex()
+
+
+    ###################################################################################################################
+    # Example result data
+    result = {
+        "body_shape": {"Body Type": "Athletic"},
+        "Body_detailed_info": {
+            "头肩比": "1.2",
+            "上下半身比例": "Golden Ratio",
+            "头肩比判断": "Balanced",
+            "身材比例判断": "Proportionate",
+        },
+        "three_d_model": {"3D Shape": "Mesomorph"},
+        "three_d_model_info": {
+            "三围比例": "3:2:3",
+            "身材类型": "Hourglass",
+            "腿型": "Straight",
+        },            
+        "face_volume_analysis": {"Overall Face Volume": "Moderate"},
+        "face_volume_info": {
+            "量感分析": "Soft",
+            "脸大脸小": "Medium",
+            "面部留白": "Balanced",
+            "综合曲直": "Curved",
+            "推荐风格": "Casual",
+        },
+    }
+
+    pdf_buffer = generate_pdf(result)
+
+    # Save the PDF to a local file
+    with open("face_analysis_report.pdf", "wb") as f:
+        f.write(pdf_buffer.getvalue())
+    ###################################################################################################################
+
 
     # Prepare upload parameters
     key = f"{upload_dir}/requirements.txt"

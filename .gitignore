@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 
 seasons/
+flask_session/
+face_analysis_report.pdf

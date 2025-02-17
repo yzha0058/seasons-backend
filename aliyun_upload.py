@@ -9,11 +9,15 @@ import requests
 from alibabacloud_tea_openapi.models import Config
 from alibabacloud_sts20150401.client import Client as Sts20150401Client
 from alibabacloud_sts20150401 import models as sts_20150401_models
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Environment variable configuration
 access_key_id = os.environ.get('OSS_ACCESS_KEY_ID')
 access_key_secret = os.environ.get('OSS_ACCESS_KEY_SECRET')
 role_arn_for_oss_upload = os.environ.get('OSS_STS_ROLE_ARN')
+
 
 role_session_name = 'role_session_name'
 

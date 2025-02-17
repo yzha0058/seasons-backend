@@ -11,6 +11,9 @@ from alibabacloud_sts20150401.client import Client as Sts20150401Client
 from alibabacloud_sts20150401 import models as sts_20150401_models
 from dotenv import load_dotenv
 from pdf_generate import generate_pdf
+import requests
+import fitz
+import io
 
 load_dotenv()
 
@@ -28,6 +31,32 @@ region_id = 'cn-beijing'
 host = f'http://{bucket}.oss-cn-beijing.aliyuncs.com'
 upload_dir = 'dir'
 local_file_path = 'requirements.txt'
+
+def download_pdf(url):
+    """ Download a PDF from a URL and return a PyMuPDF document object """
+    response = requests.get(url)
+    if response.status_code == 200:
+        pdf_stream = io.BytesIO(response.content)
+        return fitz.open(stream=pdf_stream, filetype="pdf")  # Open PDF in memory
+    else:
+        raise Exception(f"Failed to download PDF, status code: {response.status_code}")
+    
+def merge_pdfs(generated_pdf, existing_pdf):
+    """ Merge the generated PDF with the downloaded PDF """
+    final_pdf = fitz.open()
+    
+    # Append generated PDF pages
+    final_pdf.insert_pdf(generated_pdf)
+
+    # Append existing PDF pages
+    final_pdf.insert_pdf(existing_pdf)
+
+    # Save merged PDF to memory
+    merged_pdf_buffer = io.BytesIO()
+    final_pdf.save(merged_pdf_buffer)
+    merged_pdf_buffer.seek(0)
+
+    return merged_pdf_buffer
 
 # Function to calculate HMAC-SHA256
 def hmacsha256(key, data):
@@ -113,11 +142,15 @@ def upload_to_oss(user_id):
     }
 
 
-    pdf_buffer = generate_pdf(result)
+    EXISTING_PDF_URL = "https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-Diamond.pdf"
+
+    generated_pdf = generate_pdf(result)
+    existing_pdf = download_pdf(EXISTING_PDF_URL)
+    merged_pdf = merge_pdfs(generated_pdf, existing_pdf)
 
     # Save the PDF to a local file
     with open("face_analysis_report.pdf", "wb") as f:
-        f.write(pdf_buffer.getvalue())
+        f.write(merged_pdf.getvalue())
     ###################################################################################################################
 
 

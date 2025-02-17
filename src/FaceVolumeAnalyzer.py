@@ -19,10 +19,12 @@ class FaceVolumeAnalyzer:
     def analyze(self):
         # 运行姿态分析
         body_analyzer = PoseAnalyzer(self.image)
-
+        body_analyzer.analyze() 
         
         # 获取 Pose 关键点
         landmarks = body_analyzer.landmarks
+        if landmarks is None:
+            raise ValueError("PoseAnalyzer failed: No landmarks detected.")        
         
         # 计算头长
         head_height = np.linalg.norm(
@@ -43,6 +45,10 @@ class FaceVolumeAnalyzer:
         head_width = np.linalg.norm(np.array([landmarks[7].x, landmarks[7].y]) - np.array([landmarks[8].x, landmarks[8].y]))
         shoulder_width = np.linalg.norm(np.array([landmarks[11].x, landmarks[11].y]) - np.array([landmarks[12].x, landmarks[12].y]))
         head_shoulder_ratio = head_width / shoulder_width
+
+        # 确保所有值有效
+        if any(np.isnan([head_height, body_height, head_ratio, head_width, shoulder_width, head_shoulder_ratio])):
+            raise ValueError("PoseAnalyzer detected invalid values in landmarks.")
         
 
         # 计算面部留白

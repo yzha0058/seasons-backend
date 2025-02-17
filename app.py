@@ -20,6 +20,7 @@ from src.FaceVolumeAnalyzer import FaceVolumeAnalyzer
 from datetime import timedelta
 from aliyun_upload import upload_to_oss
 
+
 app = Flask(__name__)
 # 设置 Flask `session` 存储
 app.config["SECRET_KEY"] = "seasons"  # 设置 SECRET_KEY 以支持加密
@@ -158,34 +159,35 @@ def body_analyze():
             return jsonify({"error": "No height data provided"}), 400
         user_height = float(user_height)
 
-        # print("Current session data:", dict(session))  # 打印 session 内容，检查数据是否存在
 
-        # # 从 session 读取 ratio_1 和 ratio_5
-        # ratio_1 = session.get("ratio_1")
-        # ratio_5 = session.get("ratio_5")
-        # lip_curve = session.get("lip_curve")
-        # nose_curve = session.get("nose_curve")
-        # eye_curve = session.get("eye_curve")
-        # face_curve = session.get("face_curve")
+
+        # 从 session 读取 ratio_1 和 ratio_5
+        eye_ratio_str = face_result['Face_shape_info']['五眼比例']
+        eye_ratios = [float(x.strip()) for x in eye_ratio_str.split(":")]  # 去掉空格并转换为 float
+        ratio_1 = eye_ratios[0]  # 第一个数
+        ratio_5 = eye_ratios[-1]  # 最后一个数
+        lip_curve = face_result['Lips_detailed_info']['曲直结果']
+        nose_curve = face_result['nose_detailed_info']['鼻型综合曲直']
+        eye_curve = face_result['eye_detailed_info']['眼型综合曲直']
+        face_curve = face_result['Face_shape_info']['脸型曲直']
+
         # 检查缺失数据
-        # missing_data1 = []
-
-        # if ratio_1 is None:
-        #     missing_data1.append("ratio_1")
-        # if ratio_5 is None:
-        #     missing_data1.append("ratio_5")
-        # if lip_curve is None:
-        #     missing_data1.append("lip_curve")
-        # if nose_curve is None:
-        #     missing_data1.append("nose_curve")
-        # if eye_curve is None:
-        #     missing_data1.append("eye_curve")
-        # if face_curve is None:
-        #     missing_data1.append("face_curve")
-
-        # # 如果有缺失的数据，返回具体的缺失项
-        # if missing_data1:
-        #     return jsonify({"error": f"Missing data in session: {', '.join(missing_data1)}"}), 400
+        missing_data1 = []
+        if ratio_1 is None:
+            missing_data1.append("ratio_1")
+        if ratio_5 is None:
+            missing_data1.append("ratio_5")
+        if lip_curve is None:
+            missing_data1.append("lip_curve")
+        if nose_curve is None:
+            missing_data1.append("nose_curve")
+        if eye_curve is None:
+            missing_data1.append("eye_curve")
+        if face_curve is None:
+            missing_data1.append("face_curve")
+        # 如果有缺失的数据，返回具体的缺失项
+        if missing_data1:
+            return jsonify({"error": f"Missing data in session: {', '.join(missing_data1)}"}), 400
         
         # Analyze body shape
         body_analyzer = PoseAnalyzer(image)
@@ -368,6 +370,8 @@ def face_analyze():
     except Exception as err:
         tb_str = traceback.format_exc()
         return jsonify({"error": f"Exception while analyzing: {str(err)} - {tb_str}"}), 400
+    
+
     
 @app.route('/yolo-detect', methods=['POST'])
 def yolo_detect():

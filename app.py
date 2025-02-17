@@ -209,7 +209,7 @@ def body_analyze():
 
         result = {
             "body_shape": body_analyzer.result,
-             "Body_detailed_info": {
+             "body_detailed_info": {
                 "头肩比": body_analyzer.result.get('头肩比', '未知'),
                 "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
                 "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),

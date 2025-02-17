@@ -113,6 +113,10 @@ def body_analyze():
         waist = data.get("waist")
         hips = data.get("hips")
 
+        face_result = data.get("face_result")
+
+        print(face_result)
+
         # 检查必需的数据是否存在。
         # 【这里三围如果没输入是否可以跳过？身材分析determine_body_shape没有用到三围】 
         # 或者有三围可以直接计算身材？
@@ -154,34 +158,34 @@ def body_analyze():
             return jsonify({"error": "No height data provided"}), 400
         user_height = float(user_height)
 
-        print("Current session data:", dict(session))  # 打印 session 内容，检查数据是否存在
+        # print("Current session data:", dict(session))  # 打印 session 内容，检查数据是否存在
 
-        # 从 session 读取 ratio_1 和 ratio_5
-        ratio_1 = session.get("ratio_1")
-        ratio_5 = session.get("ratio_5")
-        lip_curve = session.get("lip_curve")
-        nose_curve = session.get("nose_curve")
-        eye_curve = session.get("eye_curve")
-        face_curve = session.get("face_curve")
+        # # 从 session 读取 ratio_1 和 ratio_5
+        # ratio_1 = session.get("ratio_1")
+        # ratio_5 = session.get("ratio_5")
+        # lip_curve = session.get("lip_curve")
+        # nose_curve = session.get("nose_curve")
+        # eye_curve = session.get("eye_curve")
+        # face_curve = session.get("face_curve")
         # 检查缺失数据
-        missing_data1 = []
+        # missing_data1 = []
 
-        if ratio_1 is None:
-            missing_data1.append("ratio_1")
-        if ratio_5 is None:
-            missing_data1.append("ratio_5")
-        if lip_curve is None:
-            missing_data1.append("lip_curve")
-        if nose_curve is None:
-            missing_data1.append("nose_curve")
-        if eye_curve is None:
-            missing_data1.append("eye_curve")
-        if face_curve is None:
-            missing_data1.append("face_curve")
+        # if ratio_1 is None:
+        #     missing_data1.append("ratio_1")
+        # if ratio_5 is None:
+        #     missing_data1.append("ratio_5")
+        # if lip_curve is None:
+        #     missing_data1.append("lip_curve")
+        # if nose_curve is None:
+        #     missing_data1.append("nose_curve")
+        # if eye_curve is None:
+        #     missing_data1.append("eye_curve")
+        # if face_curve is None:
+        #     missing_data1.append("face_curve")
 
-        # 如果有缺失的数据，返回具体的缺失项
-        if missing_data1:
-            return jsonify({"error": f"Missing data in session: {', '.join(missing_data1)}"}), 400
+        # # 如果有缺失的数据，返回具体的缺失项
+        # if missing_data1:
+        #     return jsonify({"error": f"Missing data in session: {', '.join(missing_data1)}"}), 400
         
         # Analyze body shape
         body_analyzer = PoseAnalyzer(image)

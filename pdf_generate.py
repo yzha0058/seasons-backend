@@ -4,12 +4,16 @@ from flask import Flask, send_file
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import io
+import fitz
 
 # Register the font (adjust the path based on your system)
 FONT_PATH = "font/SourceHanSans-VF.ttf.ttc"  # Common path on Linux
 pdfmetrics.registerFont(TTFont("SourceHanSans", FONT_PATH))  # Register font
 
+
 def generate_pdf(result):
+    
+
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
 
@@ -55,4 +59,4 @@ def generate_pdf(result):
     pdf.save()
 
     buffer.seek(0)
-    return buffer
+    return fitz.open(stream=buffer.getvalue(), filetype="pdf")  # Convert to PyMuPDF doc

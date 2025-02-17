@@ -14,6 +14,7 @@ from pdf_generate import generate_pdf
 import requests
 import fitz
 import io
+import uuid
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ bucket = 'seasons-upload'
 region_id = 'cn-beijing'
 host = f'http://{bucket}.oss-cn-beijing.aliyuncs.com'
 upload_dir = 'dir'
-local_file_path = 'requirements.txt'
+local_file_path = 'face_analysis_report.pdf'
 
 def download_pdf(url):
     """ Download a PDF from a URL and return a PyMuPDF document object """
@@ -153,9 +154,12 @@ def upload_to_oss(user_id):
         f.write(merged_pdf.getvalue())
     ###################################################################################################################
 
+    # Generate a unique file name
+    unique_filename = f"seasons-{uuid.uuid4()}.pdf"
+
 
     # Prepare upload parameters
-    key = f"{upload_dir}/requirements.txt"
+    key = f"{upload_dir}/{unique_filename}"
     fields = {
         'key': key,
         'policy': base64_policy,

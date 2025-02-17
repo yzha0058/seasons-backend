@@ -372,7 +372,6 @@ def face_analyze():
         return jsonify({"error": f"Exception while analyzing: {str(err)} - {tb_str}"}), 400
     
 
-    
 @app.route('/yolo-detect', methods=['POST'])
 def yolo_detect():
     try:

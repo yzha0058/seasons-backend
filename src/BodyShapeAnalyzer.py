@@ -82,6 +82,9 @@ class PoseAnalyzer:
 
     def analyze(self):
         results = self.process_image()
+        if not results.pose_landmarks:
+            raise ValueError("⚠️ No pose landmarks detected. 请确保图片包含完整的身体。")
+        self.landmarks = results.pose_landmarks.landmark  # 确保 landmarks 赋值
         annotated_image = self.image.copy()
         mp.solutions.drawing_utils.draw_landmarks(
             annotated_image,

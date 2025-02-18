@@ -35,6 +35,7 @@ local_file_path = 'face_analysis_report.pdf'
 
 def download_pdf(url):
     """ Download a PDF from a URL and return a PyMuPDF document object """
+    print("Download PDF")
     response = requests.get(url)
     if response.status_code == 200:
         pdf_stream = io.BytesIO(response.content)
@@ -44,6 +45,7 @@ def download_pdf(url):
     
 def merge_pdfs(generated_pdf, existing_pdf):
     """ Merge the generated PDF with the downloaded PDF """
+    print("Merge PDF")
     final_pdf = fitz.open()
     
     # Append generated PDF pages
@@ -69,6 +71,7 @@ def hmacsha256(key, data):
 
 # Function to handle the file upload to OSS
 def upload_to_oss(user_id):
+    print("Starting to setup upload to cloud")
     # Initialize STS client and get temporary credentials
     config = Config(
         region_id=region_id,
@@ -111,6 +114,8 @@ def upload_to_oss(user_id):
     policy_str = json.dumps(policy).strip()
     base64_policy = base64.b64encode(policy_str.encode()).decode()
 
+    print("Generating key")
+
     # Generate signing key
     date_key = hmacsha256(("aliyun_v4" + temp_access_key_secret).encode(), dt_obj_2)
     date_region_key = hmacsha256(date_key, "cn-beijing")
@@ -125,7 +130,7 @@ def upload_to_oss(user_id):
     ###################################################################################################################
     # Example face analysis result (your provided data)
     result = {
-        "Face_shape": {"三庭比例": "1 : 1.21 : 1.05", "三线比例": "0.95 : 1 : 0.86", "下巴形状": "钝弧（圆形下巴）", "五眼比例": "0.62 : 1 : 1.15 : 1.02 : 0.6",
+        "Face_shape": {"三庭比例": "1 : 1.25 : 1.05", "三线比例": "0.95 : 1 : 0.86", "下巴形状": "钝弧（圆形下巴）", "五眼比例": "0.62 : 1 : 1.15 : 1.02 : 0.6",
                        "脸型判断结果": "菱形脸", "脸型曲直": "偏直", "脸部风格": "御姐成熟脸", "脸长和脸宽的 比例": "1.35"},
         "Face_shape_info": {"三庭比例": "1 : 1.21 : 1.05", "三线比例": "0.95 : 1 : 0.86", "下巴形状": "钝弧（圆 形下巴）", "五眼比例": "0.62 : 1 : 1.15 : 1.02 : 0.6",
                             "脸型判断结果": "菱形脸", "脸型曲直": "偏直", "脸部风格": "御姐成熟脸", "脸长和脸宽的比例": "1.35"},
@@ -149,6 +154,7 @@ def upload_to_oss(user_id):
     existing_pdf = download_pdf(EXISTING_PDF_URL)
     merged_pdf = merge_pdfs(generated_pdf, existing_pdf)
 
+    print("Writing to local")
     # Save the PDF to a local file
     with open("face_analysis_report.pdf", "wb") as f:
         f.write(merged_pdf.getvalue())
@@ -174,6 +180,7 @@ def upload_to_oss(user_id):
     # Debugging: log fields
     print("Form fields:", fields)
 
+    print("Uploading to cloud")
     # Perform the file upload
     with open(local_file_path, 'rb') as file:
         files = {'file': (local_file_path, file)}

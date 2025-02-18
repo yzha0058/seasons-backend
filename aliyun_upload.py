@@ -35,7 +35,6 @@ local_file_path = 'face_analysis_report.pdf'
 
 def download_pdf(url):
     """ Download a PDF from a URL and return a PyMuPDF document object """
-    print("Download PDF")
     response = requests.get(url)
     if response.status_code == 200:
         pdf_stream = io.BytesIO(response.content)
@@ -43,16 +42,12 @@ def download_pdf(url):
     else:
         raise Exception(f"Failed to download PDF, status code: {response.status_code}")
     
-def merge_pdfs(generated_pdf, existing_pdf):
-    """ Merge the generated PDF with the downloaded PDF """
-    print("Merge PDF")
-    final_pdf = fitz.open()
-    
-    # Append generated PDF pages
-    final_pdf.insert_pdf(generated_pdf)
+def merge_pdfs(pdf_list):
+    """ Merge multiple PDFs and return the merged PDF buffer """
+    final_pdf = fitz.open()  # Create an empty PDF
 
-    # Append existing PDF pages
-    final_pdf.insert_pdf(existing_pdf)
+    for pdf in pdf_list:
+        final_pdf.insert_pdf(pdf)  # Append each PDF to the final document
 
     # Save merged PDF to memory
     merged_pdf_buffer = io.BytesIO()
@@ -148,11 +143,43 @@ def upload_to_oss(face_info, body_info):
     # }
     # result = face_info
 
-    EXISTING_PDF_URL = "https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-Diamond.pdf"
-
     generated_pdf = generate_pdf(face_info, body_info)
-    existing_pdf = download_pdf(EXISTING_PDF_URL)
-    merged_pdf = merge_pdfs(generated_pdf, existing_pdf)
+
+    pdf_list = [generated_pdf]  # Start with the generated PDF
+    
+    face_style = face_info["Face_style"]
+    HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
+    print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
+    hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
+    pdf_list.append(hairstyle_pdf)
+
+    face_shape_type = face_info["Face_shape_type"]
+    ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"
+    print(f"Downloading Accessory PDF: {ACCESSORY_PDF_URL}")
+    accessory_pdf = download_pdf(ACCESSORY_PDF_URL)
+    pdf_list.append(accessory_pdf)
+
+    body_style = body_info["body_style"]
+    BODYSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/outfitstyle/outfitstyle-{body_style}.pdf"
+    print(f"Downloading BodyStyle PDF: {BODYSTYLE_PDF_URL}")
+    bodystyle_pdf = download_pdf(BODYSTYLE_PDF_URL)
+    pdf_list.append(bodystyle_pdf)
+
+    body_type = body_info["body_type"]
+    BODYTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{body_type}.pdf"
+    print(f"Downloading BodyType PDF: {BODYTYPE_PDF_URL}")
+    bodytype_pdf = download_pdf(BODYTYPE_PDF_URL)
+    pdf_list.append(bodytype_pdf)
+
+    leg_type = body_info["leg_type"]
+    LEGTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{leg_type}.pdf"
+    print(f"Downloading LegType PDF: {LEGTYPE_PDF_URL}")
+    legtype_pdf = download_pdf(LEGTYPE_PDF_URL)
+    pdf_list.append(legtype_pdf)
+
+    # Merge all PDFs
+    print("Merging PDFs")
+    merged_pdf = merge_pdfs(pdf_list)
 
     print("Writing to local")
     # Save the PDF to a local file

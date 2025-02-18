@@ -86,7 +86,7 @@ class FaceVolumeAnalyzer:
         if face_volume == "量感小":
             style = "少女" if total_curve_score > 0 else "少年"
         elif face_volume == "量感大":
-            style = "浪漫" if total_curve_score > 0 else "古典/戏剧"
+            style = "浪漫" if total_curve_score > 0 else "古典戏剧"
         else:
             if total_curve_score > 0:
                 style = "优雅自然"
@@ -100,10 +100,8 @@ class FaceVolumeAnalyzer:
             "少女": "Girl",
             "少年": "Boy",
             "浪漫": "Romantic",
-            "古典": "Classical",
-            "戏剧": "Dramatic",
-            "优雅": "Elegant",
-            "自然": "Natural",
+            "古典戏剧": "Classical",            # "戏剧": "Dramatic",  
+            "优雅自然": "Elegant",            # "自然": "Natural",
             "前卫": "AvantGarde"
         }
         

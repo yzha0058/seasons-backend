@@ -94,11 +94,36 @@ class FaceVolumeAnalyzer:
                 style = "前卫"
             else:
                 style = "自然"
+
+        # 风格翻译成英文
+        style_mapping = {
+            "少女": "Girl",
+            "少年": "Boy",
+            "浪漫": "Romantic",
+            "古典": "Classical",
+            "戏剧": "Dramatic",
+            "优雅": "Elegant",
+            "自然": "Natural",
+            "前卫": "AvantGarde"
+        }
         
+        Face_style = style_mapping.get(style, "Unknown")
+                
         self.result["脸大脸小"] = face_size
         self.result["量感分析"] = face_volume
         self.result["面部留白"] = face_whitespace
         self.result["综合曲直"] = "曲" if total_curve_score > 0 else "直" if total_curve_score < 0 else "适中"
         self.result["推荐风格"] = style
+        self.result["Face_style"] = Face_style
+
+        # 曲直映射到英文
+        curve_straight_mapping = {
+            "曲": "Curve",
+            "直": "Straight",
+            "适中": "Natural"
+        }
+
+        # 赋值新变量
+        self.result["Final_Curve_Straight"] = curve_straight_mapping[self.result["综合曲直"]]
         
         return self.result

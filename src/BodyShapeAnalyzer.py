@@ -572,6 +572,7 @@ class PoseSegmentationVisualizer:
         
         if (self.bodytype != "Unknown"):
             self.result["身材类型"] = self.bodytype
+            self.result["body_type"] = self.bodytype[0] 
             
             # # 可视化指定的关键点
             # specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
@@ -590,9 +591,24 @@ class PoseSegmentationVisualizer:
             # 分析腿型
             leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
             self.result["腿型"] = leg_shape
+            
+            # 添加英文leg_type
+            if leg_shape == "正常腿型":
+                self.result["leg_type"] = "Normal-leg"
+            elif leg_shape in ["O型", "O型倾向"]:
+                self.result["leg_type"] = "O-leg"
+            elif leg_shape in ["X型", "X型倾向"]:
+                self.result["leg_type"] = "X-leg"
+            elif leg_shape in ["XO型", "XO型倾向"]:
+                self.result["leg_type"] = "XO-leg"
+            else:  # 包括"未知腿型，请检查光线和环境，调整站姿重新获取"的情况
+                self.result["leg_type"] = "Normal-leg"
+
         
         else:
             self.result["身材类型"] = self.bodytype
+            self.result["body_type"] = "Unknown"
             self.result["腿型"] = "Unknown"
+            self.result["leg_type"] = "Normal-leg"
 
         return self.result

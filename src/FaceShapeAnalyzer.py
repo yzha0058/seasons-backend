@@ -317,8 +317,27 @@ class FaceAnalyzer:
             else:
                 face_curve_straight = "未知"
 
+        # 新增Face_shape_type变量
+        if face_shape in {"梨形脸", "方形脸, 偏椭圆", "方形脸, 偏圆"}:
+            Face_shape_type = "Trangle"
+        elif face_shape == "长脸":
+            Face_shape_type = "Long"
+        elif face_shape == "倒三角脸":
+            Face_shape_type = "iTrangle"
+        elif face_shape in {"方形脸", "甲子脸", "方形脸, 轻度菱形"}:
+            Face_shape_type = "Square"
+        elif face_shape in {"菱形脸", "方菱脸"}:
+            Face_shape_type = "Diamond"
+        elif face_shape == "椭圆脸（鹅蛋脸）":
+            Face_shape_type = "Egg"
+        elif face_shape == "圆形脸":
+            Face_shape_type = "Round"
+        else:
+            Face_shape_type = "Unknown"
+
         self.result["脸型判断结果"] = face_shape
         self.result["脸型曲直"] = face_curve_straight
+        self.result["七种脸型分类"] = Face_shape_type
 
 
     def determine_three_ratios_type(self):

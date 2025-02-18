@@ -55,9 +55,10 @@ model = YOLO('yolov8n-face.pt')  # You can use other YOLOv8 models, like 'yolov8
 @app.route('/pdf-upload', methods=['POST'])
 def pdf_upload():
     data = request.json  # Get request JSON
-    user_id = data.get('user_id')  # Example of processing input
+    face_info = data.get('face_info')
+    body_info = data.get('body_info')
 
-    result = upload_to_oss(user_id)
+    result = upload_to_oss(face_info, body_info)
     return jsonify(result)
 
 @app.route('/mediapipe-detect', methods=['POST'])

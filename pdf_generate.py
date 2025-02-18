@@ -11,9 +11,7 @@ FONT_PATH = "font/SourceHanSans-VF.ttf.ttc"  # Common path on Linux
 pdfmetrics.registerFont(TTFont("SourceHanSans", FONT_PATH))  # Register font
 
 
-def generate_pdf(result):
-    
-
+def generate_pdf(face_info, body_info):
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
 
@@ -46,14 +44,17 @@ def generate_pdf(result):
         y_start -= 10
 
     # Draw sections using example data
-    draw_section("脸型分析", result["Face_shape"])
-    draw_section("脸型详细信息", result["Face_shape_info"])
-    draw_section("唇部详细信息", result["Lips_detailed_info"])
-    draw_section("眼部详细信息", result["eye_detailed_info"])
-    draw_section("眼型分析", result["eye_shape"])
-    draw_section("唇型分析", result["lip_shape"])
-    draw_section("鼻部详细信息", result["nose_detailed_info"])
-    draw_section("鼻型分析", result["nose_shape"])
+    draw_section("脸型分析", face_info["Face_shape"])
+    draw_section("脸型详细信息", face_info["Face_shape_info"])
+    draw_section("唇部详细信息", face_info["Lips_detailed_info"])
+    draw_section("眼部详细信息", face_info["eye_detailed_info"])
+    draw_section("眼型分析", face_info["eye_shape"])
+    draw_section("唇型分析", face_info["lip_shape"])
+    draw_section("鼻部详细信息", face_info["nose_detailed_info"])
+    draw_section("鼻型分析", face_info["nose_shape"])
+
+    draw_section("体型分析", body_info["body_detailed_info"])
+    draw_section("三维分析", body_info["three_d_model_info"])
 
     pdf.showPage()
     pdf.save()

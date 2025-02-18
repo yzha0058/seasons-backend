@@ -230,6 +230,7 @@ def body_analyze():
                 "综合曲直": volume_result.get('综合曲直', '未知'),
                 "推荐风格": volume_result.get('推荐风格', '未知'),
             },
+            "Face_style": "Boy",
             "body_style": "Straight",
             "body_type": "A",
             "leg_type": "O-leg",
@@ -362,8 +363,6 @@ def face_analyze():
                 "脸型曲直": face_analyzer.result.get('脸型曲直', '未知'),
             },
             "Face_shape_type": "Egg",
-            "Face_style": "Boy",
-
             #  "body_shape_info": body_analyzer.result
         }
 

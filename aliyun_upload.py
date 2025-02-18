@@ -147,7 +147,7 @@ def upload_to_oss(face_info, body_info):
 
     pdf_list = [generated_pdf]  # Start with the generated PDF
     
-    face_style = face_info["Face_style"]
+    face_style = body_info["Face_style"]
     HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
     print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
     hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)

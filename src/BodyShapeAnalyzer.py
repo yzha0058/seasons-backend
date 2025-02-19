@@ -148,7 +148,7 @@ class ImageSegmentationProcessor:
         self.DESIRED_WIDTH = 480
 
     def initialize_segmenter(self):  # Initialize the image segmentation model
-        print(f"Resolved model path: {self.model_path}")
+        # print(f"Resolved model path: {self.model_path}")
         
         # Load the model into memory
         try:
@@ -226,7 +226,7 @@ class ImageSegmentationProcessor:
         category_mask = segmentation_result.category_mask      # 获取类别遮罩 是一个numpy数组，0代表人物 1代表背景
 
         category_mask_array = category_mask.numpy_view()    # 将 category_mask 转换为 NumPy 数组   uint8 类型
-        print(category_mask_array.dtype)
+        # print(category_mask_array.dtype)
 
         overlay = self.image_rgb.copy()  # 创建透明覆盖层
         
@@ -269,7 +269,7 @@ class ImageSegmentationProcessor:
         
         # 打印使用了哪种颜色的遮罩
         color_used = "黄色" if is_blue_background else "蓝色"
-        print(f'使用了{color_used}遮罩，因为背景{"是" if is_blue_background else "不是"}蓝色的')
+        print(f'使用了{color_used}遮罩，因为背景{"是" if is_blue_background else "不是"}蓝色的') 
 
         # 显示结果
         # self.resize_and_show(self.output_image)
@@ -418,7 +418,7 @@ class PoseSegmentationVisualizer:
         # self.visualize_intersections(keypoint1, filtered_intersections, image)
         # self.visualize_intersections(keypoint2, filtered_intersections, image)
     
-        print(f"关键点 {point1} 和 {point2} 之间的轮廓点距离为", distance)
+        # print(f"关键点 {point1} 和 {point2} 之间的轮廓点距离为", distance)
         return filtered_intersections, distance
 
     
@@ -533,11 +533,11 @@ class PoseSegmentationVisualizer:
         # 计算中点
         shoulder_mid, chest_mid, waist_mid, hip_mid = self.calculate_Body_midpoints(landmarks)
         
-        # 打印中点坐标
-        print(f"Shoulder Mid: {shoulder_mid}")
-        print(f"Chest Mid: {chest_mid}")
-        print(f"Waist Mid: {waist_mid}")
-        print(f"Hip Mid: {hip_mid}")
+        # # 打印中点坐标
+        # print(f"Shoulder Mid: {shoulder_mid}")
+        # print(f"Chest Mid: {chest_mid}")
+        # print(f"Waist Mid: {waist_mid}")
+        # print(f"Hip Mid: {hip_mid}")
 
         # 查找轮廓 
         contours = self.segmentation_processor.contours
@@ -559,9 +559,9 @@ class PoseSegmentationVisualizer:
             
             self.widths[key] = distances  #储存腰围和 臀围、胸围
         
-        print(self.widths.get("shoulder_width", 0))
-        print(self.widths.get("waist_width", 0))
-        print(self.widths.get("hip_width", 0))
+        # print(self.widths.get("shoulder_width", 0))
+        # print(self.widths.get("waist_width", 0))
+        # print(self.widths.get("hip_width", 0))
         
         # 使用宽度信息判断身体形状
         self.bodytype = self.determine_body_shape(

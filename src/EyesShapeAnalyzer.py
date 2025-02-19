@@ -57,11 +57,11 @@ class EyeShapeAnalyzer:
         # Step 3: 眼长眼高比例  
         right_eye_length = np.linalg.norm(np.array(self.landmarks_coords[33]) - np.array(self.landmarks_coords[154]))
         right_eye_height = np.linalg.norm(np.array(self.landmarks_coords[159]) - np.array(self.landmarks_coords[145]))
-        right_eye_length_height = 'A' if right_eye_length <= 2.07 * right_eye_height else 'B'
+        right_eye_length_height = 'A' if right_eye_length <= 2.15 * right_eye_height else 'B'
 
         left_eye_length = np.linalg.norm(np.array(self.landmarks_coords[263]) - np.array(self.landmarks_coords[381]))
         left_eye_height = np.linalg.norm(np.array(self.landmarks_coords[386]) - np.array(self.landmarks_coords[374]))
-        left_eye_length_height = 'A' if left_eye_length <= 2.07 * left_eye_height else 'B'
+        left_eye_length_height = 'A' if left_eye_length <= 2.15 * left_eye_height else 'B'
 
         # Step 4: 使用瞳孔连线作为新的x轴判断外眼角上扬或下垂
         right_pupil = self.landmarks_coords[468]

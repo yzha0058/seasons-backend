@@ -607,8 +607,8 @@ class PoseSegmentationVisualizer:
         
         else:
             self.result["身材类型"] = self.bodytype
-            self.result["body_type"] = "Unknown"
-            self.result["腿型"] = "Unknown"
+            self.result["body_type"] = "H" #"Unknown"
+            self.result["腿型"] = "正常腿型"
             self.result["leg_type"] = "Normal-leg"
 
         return self.result

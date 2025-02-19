@@ -230,7 +230,6 @@ def body_analyze():
                 "综合曲直": volume_result.get('综合曲直', '未知'),
                 "推荐风格": volume_result.get('推荐风格', '未知'),
             },
-            "Face_style": volume_result.get('Face_style', '未知'),
             "body_style": volume_result.get('Final_Curve_Straight', '未知'), #"Straight",
             "body_type": three_d_model.result.get('body_type', '未知'), #"A",
             "leg_type": three_d_model.result.get('leg_type', '未知'), #"O-leg",

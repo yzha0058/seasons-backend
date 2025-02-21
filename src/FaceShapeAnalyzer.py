@@ -307,8 +307,8 @@ class FaceAnalyzer:
             face_curve_straight = "未知"
         else:
             # 判断脸型的曲直 添加了方形脸类型
-            curved_faces = ["圆形脸", "梨形脸", "椭圆脸（鹅蛋脸）","方形脸, 偏椭圆","方形脸, 偏圆"]
-            straight_faces = ["倒三角脸", "方形脸", "菱形脸", "方菱脸", "长脸", "甲子脸","方形脸, 轻度菱形"]
+            curved_faces = ["圆形脸", "梨形脸", "椭圆脸（鹅蛋脸）","方形脸, 偏椭圆","方形脸, 偏圆","倒三角脸"]
+            straight_faces = ["方形脸", "菱形脸", "方菱脸", "长脸", "甲子脸","方形脸, 轻度菱形"]
             
             if face_shape in curved_faces:
                 face_curve_straight = "偏曲"

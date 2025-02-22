@@ -14,6 +14,8 @@ class FaceVolumeAnalyzer:
         self.face_curve = face_curve  # 脸型曲直
         self.ratio_1 = ratio_1  # 五眼比例1
         self.ratio_5 = ratio_5  # 五眼比例5
+        # self.collarbone = collarbone  # 肩胛骨
+        # self.kneecap = kneecap  # 膝盖
         self.result = {}
     
     def analyze(self):

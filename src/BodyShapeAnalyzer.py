@@ -589,6 +589,9 @@ class PoseSegmentationVisualizer:
             _, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
 
             # 分析腿型
+            print("----------------------------------------")
+            print(distance_lap, distance_ankles, distance_calf)
+            print("----------------------------------------")
             leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
             self.result["腿型"] = leg_shape
             

@@ -114,6 +114,9 @@ def body_analyze():
         chest = data.get("chest")
         waist = data.get("waist")
         hips = data.get("hips")
+        answer = data.get("answer")
+        # collarbone = answer.get("collarbone")  # 肩胛骨  A--不明显 B--偏细长 C--偏粗短
+        # kneecap = answer.get("kneecap")  # 膝盖  A--不明显 B--偏细长 C--偏粗
 
         face_result = data.get("face_result")
 
@@ -273,6 +276,11 @@ def face_analyze():
         np_arr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
+        answers = data.get("answers")
+        eyesight = answers['eyesight']
+        print("----------------------------------------")
+        print("眼神:", eyesight)
+        print("----------------------------------------")
         
         # 设置 session 的过期时间
         session.permanent = True  # 让 session 在多个请求之间持久化
@@ -299,7 +307,7 @@ def face_analyze():
         nose_curve = nose_analyzer.result.get('鼻型综合曲直', '未知') # 鼻子曲直结果
 
         # Analyze eye shape
-        eye_analyzer = EyeShapeAnalyzer(image)
+        eye_analyzer = EyeShapeAnalyzer(image, eyesight) #, eyesight
         eye_analyzer.detect_landmarks()
         eye_analyzer.analyze_eye_shape()
         eye_curve = eye_analyzer.result.get('眼型曲直综合', '未知') # 眼睛曲直结果

@@ -207,10 +207,10 @@ class FaceAnalyzer:
             if (abs(cheekbone_width - forehead_width) / cheekbone_width <= 0.11) and (abs(cheekbone_width - jaw_width) / cheekbone_width <= 0.11):
                 if chin_type != "锐弧（尖形下巴）":
                         
-                    if ratio_1 < 0.75 and ratio_5 < 0.75:
+                    if ratio_1 < 0.72 and ratio_5 < 0.72:
                         face_shape = "方菱脸"
                         
-                    elif (ratio_1 < 0.75 or ratio_5 < 0.75) and not (abs(forehead_width - jaw_width)/cheekbone_width <= 0.03):
+                    elif (ratio_1 < 0.72 or ratio_5 < 0.72) and not (abs(forehead_width - jaw_width)/cheekbone_width <= 0.03):
                         face_shape = "方形脸, 轻度菱形"
 
                     elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (1.338 < face_length_ratio <= 1.6):
@@ -227,7 +227,7 @@ class FaceAnalyzer:
                 #这里颧骨明显宽了，正常情况不可能颧骨比其他两线短； 1 颧骨和上额差不多长，上额和下颌差距大/小 2 颧骨和下颌差不多，上额小
                 
                 # 菱形脸（伴随太阳穴凹陷）判断 ratio_1 < 0.7 且 ratio_5 < 0.7
-                if ratio_1 < 0.75 and ratio_5 < 0.75:
+                if ratio_1 < 0.72 and ratio_5 < 0.72:
                     face_shape = "菱形脸"
                 # 颧骨最大但不是菱形脸，进入第一套 椭圆/圆/方判断
                 

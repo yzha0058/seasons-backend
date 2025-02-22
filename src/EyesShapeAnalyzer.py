@@ -6,8 +6,9 @@ import os
 
 
 class EyeShapeAnalyzer:
-    def __init__(self, image):
+    def __init__(self, image, eyesight):  #, eyesight
         self.image = image
+        self.eyesight = eyesight
         # self.image = cv2.imread(image_path)
         self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         self.landmarks_coords = {}
@@ -94,10 +95,43 @@ class EyeShapeAnalyzer:
         # 输出结果
         print(f"右眼形状代码: {right_eye_shape} -> 眼型: {right_eye_type}，特征: {right_round_long}，曲直: {right_curve_straight}，内眼角角度: {right_inner_angle:.2f}°，眼长和眼高的比例：{right_eye_length/right_eye_height:.2f}")
         print(f"左眼形状代码: {left_eye_shape} -> 眼型: {left_eye_type}，特征: {left_round_long}，曲直: {left_curve_straight}，内眼角角度: {left_inner_angle:.2f}°,眼长和眼高的比例：{left_eye_length/left_eye_height:.2f}")
-        # 眼型曲直综合判断
-        if right_curve_straight == "偏曲" and left_curve_straight == "偏曲":
+        
+        
+        
+        # 处理 eyesight 的输入映射
+        eyesight_mapping = {
+            "A": "偏曲",
+            "B": "偏直",
+            "C": "曲直适中"
+        }
+        
+        eyesight_curve_straight = eyesight_mapping.get(self.eyesight, "曲直适中")  # 避免异常值
+        print(f"眼神: {eyesight_curve_straight}")
+
+                # 计算曲直评分
+        curve_straight_score = {
+            "偏曲": 1,
+            "偏直": -1,
+            "曲直适中": 0,
+            "未知曲直": 0  # 若为未知，则不影响加权计算
+        }
+            
+        # 权重设定
+        eyesight_weight = 0.4
+        calculated_weight = 0.6  # 30% for each eye
+
+        # 计算得分
+        eyesight_score = curve_straight_score[eyesight_curve_straight] * eyesight_weight
+        right_eye_score = curve_straight_score[right_curve_straight] * (calculated_weight / 2)
+        left_eye_score = curve_straight_score[left_curve_straight] * (calculated_weight / 2)
+
+        final_score = eyesight_score + right_eye_score + left_eye_score
+
+
+        # 映射最终结果
+        if final_score > 0.1:
             self.result["眼型曲直综合"] = "偏曲"
-        elif right_curve_straight == "偏直" and left_curve_straight == "偏直":
+        elif final_score < -0.1:
             self.result["眼型曲直综合"] = "偏直"
         else:
             self.result["眼型曲直综合"] = "曲直适中"
@@ -150,9 +184,120 @@ class EyeShapeAnalyzer:
         elif identified_type in ['丹凤眼', '下垂眼', '细长眼', '柳叶眼']:
             curve_straight = '偏直'
         else:
-            curve_straight = '未知曲直'
+            curve_straight = '曲直适中'
     
         return identified_type, round_long, curve_straight
+
+    # def analyze_eye_shape(self):  
+    #     #以图片左上角为原点 Zhoujy
+    #     # Step 1: 眼尾高低   
+    #     right_eye_outer_inner = 'A' if self.landmarks_coords[33][1] < self.landmarks_coords[154][1] else 'B'
+    #     left_eye_outer_inner = 'A' if self.landmarks_coords[263][1] < self.landmarks_coords[362][1] else 'B'
+
+    #     # Step 2: 内眼角角度 [153 154 158]  [362 384 381]
+    #     right_inner_angle = self.calculate_angle(self.landmarks_coords[154], self.landmarks_coords[158], self.landmarks_coords[153])
+    #     left_inner_angle = self.calculate_angle(self.landmarks_coords[362], self.landmarks_coords[384], self.landmarks_coords[381])
+    #     right_eye_inner_angle = 'A' if right_inner_angle < 45 else 'B'
+    #     left_eye_inner_angle = 'A' if left_inner_angle < 45 else 'B'
+
+    #     # Step 3: 眼长眼高比例  
+    #     right_eye_length = np.linalg.norm(np.array(self.landmarks_coords[33]) - np.array(self.landmarks_coords[154]))
+    #     right_eye_height = np.linalg.norm(np.array(self.landmarks_coords[159]) - np.array(self.landmarks_coords[145]))
+    #     right_eye_length_height = 'A' if right_eye_length <= 2.25 * right_eye_height else 'B'
+
+    #     left_eye_length = np.linalg.norm(np.array(self.landmarks_coords[263]) - np.array(self.landmarks_coords[381]))
+    #     left_eye_height = np.linalg.norm(np.array(self.landmarks_coords[386]) - np.array(self.landmarks_coords[374]))
+    #     left_eye_length_height = 'A' if left_eye_length <= 2.25 * left_eye_height else 'B'
+
+    #     # Step 4: 使用瞳孔连线作为新的x轴判断外眼角上扬或下垂
+    #     right_pupil = self.landmarks_coords[468]
+    #     left_pupil = self.landmarks_coords[473]
+    #     outer_right_eye = self.landmarks_coords[33]
+    #     outer_left_eye = self.landmarks_coords[263]
+
+    #     # 计算瞳孔中心连线的角度
+    #     dx = left_pupil[0] - right_pupil[0]
+    #     dy = left_pupil[1] - right_pupil[1]
+    #     angle = np.degrees(np.arctan2(dy, dx))
+
+    #     # 将外眼角点旋转到新坐标系
+    #     new_right_outer = self.rotate_point(outer_right_eye, right_pupil, -angle)
+    #     new_left_outer = self.rotate_point(outer_left_eye, left_pupil, -angle)
+
+    #     # 判断外眼角相对于瞳孔连线的y坐标位置
+    #     right_eye_outer_tilt = 'A' if new_right_outer[1] < 0 else 'B'
+    #     left_eye_outer_tilt = 'A' if new_left_outer[1] < 0 else 'B'
+
+    #     # 综合结果
+        
+    #     right_eye_shape = right_eye_outer_inner + right_eye_inner_angle + right_eye_length_height + right_eye_outer_tilt
+    #     left_eye_shape = left_eye_outer_inner + left_eye_inner_angle + left_eye_length_height + left_eye_outer_tilt
+    
+    #     # 获取眼型和特征 
+    #     right_eye_type, right_round_long, right_curve_straight = self.get_eye_type(right_eye_shape, right_inner_angle, right_eye_length, right_eye_height)
+    #     left_eye_type, left_round_long, left_curve_straight = self.get_eye_type(left_eye_shape, left_inner_angle, left_eye_length, left_eye_height)
+    
+    #     # 输出结果
+    #     print(f"右眼形状代码: {right_eye_shape} -> 眼型: {right_eye_type}，特征: {right_round_long}，曲直: {right_curve_straight}，内眼角角度: {right_inner_angle:.2f}°，眼长和眼高的比例：{right_eye_length/right_eye_height:.2f}")
+    #     print(f"左眼形状代码: {left_eye_shape} -> 眼型: {left_eye_type}，特征: {left_round_long}，曲直: {left_curve_straight}，内眼角角度: {left_inner_angle:.2f}°,眼长和眼高的比例：{left_eye_length/left_eye_height:.2f}")
+    #     # 眼型曲直综合判断
+    #     if right_curve_straight == "偏曲" and left_curve_straight == "偏曲":
+    #         self.result["眼型曲直综合"] = "偏曲"
+    #     elif right_curve_straight == "偏直" and left_curve_straight == "偏直":
+    #         self.result["眼型曲直综合"] = "偏直"
+    #     else:
+    #         self.result["眼型曲直综合"] = "曲直适中"
+                    
+    #     # 存储右眼数据
+    #     self.result["右眼类型"] = right_eye_type
+    #     self.result["右眼特征"] = right_round_long
+    #     self.result["右眼曲直"] = right_curve_straight
+    #     self.result["右眼内眼角角度"] = f"{right_inner_angle:.2f}°"
+    #     self.result["右眼长高比例"] = f"{right_eye_length/right_eye_height:.2f}"
+    
+    #     # 存储左眼数据
+    #     self.result["左眼类型"] = left_eye_type
+    #     self.result["左眼特征"] = left_round_long
+    #     self.result["左眼曲直"] = left_curve_straight
+    #     self.result["左眼内眼角角度"] = f"{left_inner_angle:.2f}°"
+    #     self.result["左眼长高比例"] = f"{left_eye_length/left_eye_height:.2f}"
+
+    #     return right_eye_shape, right_eye_type, left_eye_shape, left_eye_type    
+    
+    # def get_eye_type(self, eye_shape, inner_angle, eye_length, eye_height):
+    #     # 眼型判断规则
+    #     eye_shapes = {  # 杏眼、圆眼(0.8)、桃花眼、丹凤眼、下垂眼、细长眼、柳叶眼
+    #         '杏眼': ['ABAA', 'ABAB', 'AAAB'],
+    #         '桃花眼': ['AAAA', 'BAAA'],
+    #         '丹凤眼': ['ABBA', 'AABA'],
+    #         '圆眼': ['BBAB'],
+    #         '下垂眼': ['BABB', 'BBAA'],
+    #         '细长眼': ['BBBB', 'ABBB', 'BBBA'],
+    #         '柳叶眼': ['BABA', 'BAAB', 'AABB']
+    #     }
+    #     identified_type = '未知类型'
+    #     for eye_type, codes in eye_shapes.items():
+    #         if eye_shape in codes:
+    #             identified_type = eye_type
+    #             break
+    
+    #     # 判断圆润或细长
+    #     if eye_length <= 1.5 * eye_height:
+    #         round_long = '圆润'
+    #     else:
+    #         round_long = '细长'
+    
+    #     # 根据眼型判断偏曲或偏直
+    #     # 杏眼、桃花眼、圆眼 -- 偏曲
+    #     # 丹凤眼、下垂眼、细长眼、柳叶眼 -- 偏直
+    #     if identified_type in ['杏眼', '桃花眼', '圆眼']:
+    #         curve_straight = '偏曲'
+    #     elif identified_type in ['丹凤眼', '下垂眼', '细长眼', '柳叶眼']:
+    #         curve_straight = '偏直'
+    #     else:
+    #         curve_straight = '未知曲直'
+    
+    #     return identified_type, round_long, curve_straight
    
     def display_result(self):
         self.analyze_eye_shape()

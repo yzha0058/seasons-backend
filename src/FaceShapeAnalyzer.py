@@ -201,24 +201,35 @@ class FaceAnalyzer:
 
         face_shape = ""
 
+        # 计算面部留白
+        face_whitespace_ratio = (ratio_1 + ratio_5) / 2
+        if face_whitespace_ratio > 0.9:
+            face_whitespace = "小量感"
+        elif face_whitespace_ratio < 0.7:
+            face_whitespace = "大量感"
+        else:
+            face_whitespace = "中量感"
+        self.result["脸部量感"] = face_whitespace
 
         # 如果颧骨最宽，并且和额头、下颌的比例差小于0.11，下巴不是锐弧，那么就是方形脸或者方菱脸
         if (cheekbone_width > forehead_width and cheekbone_width > jaw_width):
             if (abs(cheekbone_width - forehead_width) / cheekbone_width <= 0.11) and (abs(cheekbone_width - jaw_width) / cheekbone_width <= 0.11):
                 if chin_type != "锐弧（尖形下巴）":
                         
-                    if ratio_1 < 0.72 and ratio_5 < 0.72:
+                    if ratio_1 < 0.70 and ratio_5 < 0.70:
                         face_shape = "方菱脸"
                         
-                    elif (ratio_1 < 0.72 or ratio_5 < 0.72) and not (abs(forehead_width - jaw_width)/cheekbone_width <= 0.03):
+                    elif (ratio_1 < 0.70 or ratio_5 < 0.70) and not (abs(forehead_width - jaw_width)/cheekbone_width <= 0.03):
                         face_shape = "方形脸, 轻度菱形"
 
-                    elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (1.338 < face_length_ratio <= 1.6):
+                    elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (1.338 < face_length_ratio <= 1.44):
                         face_shape = "方形脸, 偏椭圆"
                         
                     elif abs(forehead_width - jaw_width)/cheekbone_width <= 0.03 and (face_length_ratio <= 1.338):
                         face_shape = "方形脸, 偏圆"
-                        
+
+                    elif face_length_ratio > 1.44:
+                        face_shape = "长脸"
                     else:
                         face_shape = "方形脸"
                 else:
@@ -227,24 +238,24 @@ class FaceAnalyzer:
                 #这里颧骨明显宽了，正常情况不可能颧骨比其他两线短； 1 颧骨和上额差不多长，上额和下颌差距大/小 2 颧骨和下颌差不多，上额小
                 
                 # 菱形脸（伴随太阳穴凹陷）判断 ratio_1 < 0.7 且 ratio_5 < 0.7
-                if ratio_1 < 0.72 and ratio_5 < 0.72:
+                if ratio_1 < 0.70 and ratio_5 < 0.70:
                     face_shape = "菱形脸"
                 # 颧骨最大但不是菱形脸，进入第一套 椭圆/圆/方判断
                 
                 # 椭圆脸（鹅蛋脸） 
-                # 条件：额头和下颌接近，face_length_ratio在[1.338,1.6]，下巴不为机器人下巴
-                elif abs(forehead_width - jaw_width) < 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6) and (chin_type != "机器人下巴（方形下巴）"):
+                # 条件：额头和下颌接近，face_length_ratio在[1.338,1.44]，下巴不为机器人下巴
+                elif abs(forehead_width - jaw_width) < 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.44) and (chin_type != "机器人下巴（方形下巴）"):
                     face_shape = "椭圆脸（鹅蛋脸）"
 
                 #倒三角脸判断 额头和颧骨相差不多时，额头明显大于下颌 宽额头对应倒三角   下巴不为机器人下巴
-                elif (forehead_width > jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6):
+                elif (forehead_width > jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.44):
                     if chin_type != "机器人下巴（方形下巴）":
                         face_shape = "倒三角脸"
                     else:
                         face_shape = "甲子脸"
 
                 # 额头明显比下颌小，窄额头对应菱形脸
-                elif (forehead_width < jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.6):
+                elif (forehead_width < jaw_width) and abs(forehead_width - jaw_width) >= 0.11 * forehead_width and (1.338 < face_length_ratio <= 1.44):
                         face_shape = "菱形脸"
                 
                 # 圆形脸
@@ -271,7 +282,7 @@ class FaceAnalyzer:
             # 方形脸（第二次出现）
 
             #下颌大于颧骨的情况
-            if face_length_ratio > 1.6:
+            if face_length_ratio > 1.44:
                   face_shape = "长脸"
             
             elif jaw_width >= cheekbone_width :

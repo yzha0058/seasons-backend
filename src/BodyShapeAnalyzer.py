@@ -521,7 +521,7 @@ class PoseSegmentationVisualizer:
         
         # 计算肩宽为关键点11和12之间的距离并可视化
         shoulder_width = self.calculate_distance(landmarks[11], landmarks[12])
-        self.widths["shoulder_width"] = 1.1 * shoulder_width   #女生的肩部是11和12距离的1.1倍，如果健身导致肩部很宽 需要换为之前的算法
+        self.widths["shoulder_width"] = 1.2 * shoulder_width   #女生的肩部是11和12距离的1.1倍，如果健身导致肩部很宽 需要换为之前的算法
         
         pt1 = (int(landmarks[11].x * segmented_image.shape[1]), int(landmarks[11].y * segmented_image.shape[0]))
         pt2 = (int(landmarks[12].x * segmented_image.shape[1]), int(landmarks[12].y * segmented_image.shape[0]))

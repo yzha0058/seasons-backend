@@ -334,6 +334,14 @@ def face_analyze():
         session["face_curve"] = face_curve
         session.modified = True
 
+        # 处理 eyesight 的输入映射
+        eyesight_mapping = {
+            "A": "偏曲",
+            "B": "偏直",
+            "C": "曲直适中"
+        }
+
+        eyesight_curve_straight = eyesight_mapping.get(eyesight, "曲直适中")  # 避免异常值
 
         # Collect the analysis results
         result = {
@@ -367,6 +375,7 @@ def face_analyze():
                 "左眼曲直": eye_analyzer.result.get('左眼曲直', '未知'),
                 "左眼眼长和眼高的比例": eye_analyzer.result.get('左眼长高比例', '未知'),
                 "眼型综合曲直": eye_analyzer.result.get('眼型曲直综合', '未知'),
+                "眼神": eyesight_curve_straight,
             },
             "Face_shape": face_analyzer.result, # {'五眼比例': '0.79 : 1 : 1.24 : 0.93 : 0.68', '三庭比例': '1 : 1.63 : 1.46', '三线比例': '0.95 : 1 : 0.88', '脸长和脸宽的比例': '1.3', '下巴形状': '钝弧（圆形下巴）', '脸型判断结果': '圆形脸', '脸部风格': '长中庭, 气质脸'}
             "Face_shape_info": {
@@ -378,6 +387,7 @@ def face_analyze():
                 "脸型判断结果": face_analyzer.result.get('脸型判断结果', '未知'),
                 "脸部风格": face_analyzer.result.get('脸部风格', '未知'),
                 "脸型曲直": face_analyzer.result.get('脸型曲直', '未知'),
+                "脸部量感": face_analyzer.result.get('脸部量感', '未知'),
             },
             "Face_shape_type": face_analyzer.result.get('七种脸型分类', '未知'), #"Egg",
             

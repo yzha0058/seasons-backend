@@ -25,11 +25,21 @@ class FaceAnalyzer:
 
     def detect_face_with_yolo(self):
         """使用YOLO检测人脸, 并保存检测到的人脸框坐标"""
-        results = self.yolo_model(self.image_path)
+        results = self.yolo_model(self.image)
         if results[0].boxes:
             box = results[0].boxes[0]  # 假设只分析第一张人脸
             x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
-            cv2.rectangle(self.image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+            # 在 overlay 层绘制半透明矩形   
+            overlay = self.image_rgb.copy()
+            alpha = 0.5  # 透明度
+
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 255, 255), 2, cv2.LINE_AA)  # 画矩形
+            cv2.addWeighted(overlay, alpha, self.image_rgb, 1 - alpha, 0, self.image_rgb)  # 融合透明效果
+
+            # 画圆角端点
+            cv2.circle(self.image_rgb, (x1, y1), 5, (0, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(self.image_rgb, (x2, y2), 5, (0, 255, 255), -1, cv2.LINE_AA)
 
             # 将检测框保存为类属性
             self.x_left = x1
@@ -147,11 +157,34 @@ class FaceAnalyzer:
         self.result["三线比例"] = f"{forehead_ratio} : 1 : {jaw_ratio}"
         self.result["脸长和脸宽的比例"] = f"{face_length_ratio}"
 
-        # 可视化测量线条
-        cv2.line(self.image_rgb, tuple(point_21), tuple(point_251), (255, 0, 0), 2)  # 额头宽度
-        cv2.line(self.image_rgb, tuple(point_234), tuple(point_454), (0, 255, 0), 2)  # 颧骨宽度
-        cv2.line(self.image_rgb, tuple(point_58), tuple(point_288), (0, 0, 255), 2)  # 下颌宽度
-        cv2.line(self.image_rgb, tuple(point_top_center), tuple(point_152), (255, 255, 0), 2)  # 脸长
+        # **调整颜色**
+        color_forehead = (255, 0, 255)  # 紫色
+        color_cheekbone = (0, 255, 255)  # 黄色
+        color_jaw = (0, 255, 0)  # 绿色
+        color_face_length = (255, 255, 0)  # 青色
+
+        # **调整粗细**
+        thickness_forehead = 2  # 额头线条更细
+        thickness_cheekbone = 2  # 颧骨线条更细
+        thickness_jaw = 2  # 下颌线条略粗
+        thickness_face_length = 2  # 脸长线条略粗
+
+        overlay = self.image_rgb.copy()  # 创建透明层
+        alpha = 0.6  # 透明度
+
+        # **绘制半透明测量线条**
+        cv2.line(overlay, tuple(point_21), tuple(point_251), color_forehead, thickness_forehead, cv2.LINE_AA)  # 额头
+        cv2.line(overlay, tuple(point_234), tuple(point_454), color_cheekbone, thickness_cheekbone, cv2.LINE_AA)  # 颧骨
+        cv2.line(overlay, tuple(point_58), tuple(point_288), color_jaw, thickness_jaw, cv2.LINE_AA)  # 下颌
+        cv2.line(overlay, tuple(point_top_center), tuple(point_152), color_face_length, thickness_face_length, cv2.LINE_AA)  # 脸长
+
+        # **绘制端点**
+        points = [point_21, point_251, point_234, point_454, point_58, point_288, point_top_center, point_152]
+        for pt in points:
+            cv2.circle(overlay, tuple(pt), 5, (255, 255, 255), -1, cv2.LINE_AA)  # 白色端点
+
+        # 透明融合
+        cv2.addWeighted(overlay, alpha, self.image_rgb, 1 - alpha, 0, self.image_rgb)
 
         return face_length_ratio
 

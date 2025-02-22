@@ -3,6 +3,7 @@ import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
+import base64
 
 class FaceAnalyzer:
     def __init__(self, image):
@@ -422,6 +423,16 @@ class FaceAnalyzer:
         self.determine_face_shape()
         self.determine_three_ratios_type()
         print(self.result)
+
+        # Convert back to BGR before encoding
+        image_bgr = cv2.cvtColor(self.image_rgb, cv2.COLOR_RGB2BGR)
+
+        # Encode image to base64
+        _, buffer = cv2.imencode('.png', image_bgr)  # Convert image to PNG format
+        image_base64 = base64.b64encode(buffer).decode("utf-8")  # Encode to base64
+
+        # Store the base64 string in the result
+        self.result["image_base64"] = f"data:image/png;base64,{image_base64}"
 
     def visualize_original_image(self):
         """可视化原始图像"""

@@ -390,6 +390,7 @@ def face_analyze():
                 "脸部量感": face_analyzer.result.get('脸部量感', '未知'),
             },
             "Face_shape_type": face_analyzer.result.get('七种脸型分类', '未知'), #"Egg",
+            "return_image": face_analyzer.result.get("image_base64", ''), 
             
 
             #  "body_shape_info": body_analyzer.result

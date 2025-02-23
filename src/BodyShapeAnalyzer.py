@@ -20,6 +20,7 @@ class PoseAnalyzer:
         self.pose = self.mp_pose.Pose(static_image_mode=True, model_complexity=2, enable_segmentation=False)
         self.landmarks = None
         self.result = {}
+        self.midpoints = {}
 
     def process_image(self):
         results = self.pose.process(self.image_rgb)
@@ -545,6 +546,13 @@ class PoseSegmentationVisualizer:
         
         # 计算中点
         shoulder_mid, chest_mid, waist_mid, hip_mid = self.calculate_Body_midpoints(landmarks)
+
+        self.midpoints = {
+            "shoulder_width": shoulder_mid,
+            "chest_width": chest_mid,
+            "waist_width": waist_mid,
+            "hip_width": hip_mid
+        }
         
         # # 打印中点坐标
         # print(f"Shoulder Mid: {shoulder_mid}")
@@ -592,10 +600,13 @@ class PoseSegmentationVisualizer:
 
         # **将最终图像转换为 Base64**
         base64_image = self.image_to_base64(overlap)
+
+
         if not base64_image:
             print("⚠️ Base64 编码失败！")
         else:
             print("✅ Base64 编码成功！数据大小:", len(base64_image))
+
         self.result["processed_body_image"] = base64_image
         
 
@@ -664,29 +675,46 @@ class PoseSegmentationVisualizer:
 
             # **颜色定义**
             colors = {
-                "shoulder": (255, 0, 0),  # 蓝色
-                "chest": (0, 255, 0),  # 绿色
-                "waist": (0, 255, 255),  # 黄色
-                "hip": (255, 0, 255),  # 紫色
-                "leg": (0, 165, 255)  # 橙色
+                "shoulder_width": (255, 0, 0),  # 蓝色
+                "chest_width": (0, 255, 0),  # 绿色
+                "waist_width": (0, 255, 255),  # 黄色
+                "hip_width": (255, 0, 255),  # 紫色
             }
 
+            height, width = image.shape[0:2]
+
+            print("执行画图交点查询")
+
             # **绘制肩、胸、腰、臀线条**
-            body_parts = ["shoulder", "chest", "waist", "hip"]
+            body_parts = ["shoulder_width", "chest_width", "waist_width", "hip_width"]
             for part in body_parts:
-                mid_point = self.widths.get(f"{part}_width", None)
-                if mid_point:
+                mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
+                print(f"当前处理 {part}，中点坐标为: {mid_point}")
+                if mid_point is not None:
                     intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
+                    print(f"画图时，🚩 {part} 的交点: {intersections}")
                     if intersections and len(intersections) == 2:
-                        cv2.line(overlay, tuple(intersections[0]), tuple(intersections[1]), colors[part], 2, cv2.LINE_AA)
+                        pt1 = (
+                            int(intersections[0][0] * width),
+                            int(intersections[0][1] * height)
+                        )
+                        pt2 = (
+                            int(intersections[1][0] * width),
+                            int(intersections[1][1] * height)
+                        )
+                        cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
+                    else:
+                        print(f"⚠️ {part} intersections 错误或不完整: {intersections}")
+                else:
+                    print(f"⚠️ {part} 中点坐标不存在或为None")
 
             # **绘制腿部关键点 (11-32 除了 0-10)**
-            pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-            for i in range(len(pose_landmarks) - 1):
-                p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
-                pt1 = (int(landmarks[p1].x * image.shape[1]), int(landmarks[p1].y * image.shape[0]))
-                pt2 = (int(landmarks[p2].x * image.shape[1]), int(landmarks[p2].y * image.shape[0]))
-                cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
+            # pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+            # for i in range(len(pose_landmarks) - 1):
+            #     p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
+            #     pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
+            #     pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
+            #     cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
 
             # **融合透明层**
             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
@@ -694,20 +722,53 @@ class PoseSegmentationVisualizer:
             print("✅ visualize_pose() 执行完毕")
         except Exception as e:
             print(f"⚠️ visualize_pose() 执行出错: {e}")
-
     
-    def image_to_base64(self, image):
-        """ 将 OpenCV 图像转换为 Base64 编码 """
-        if image is None or image.size == 0:
-            print("⚠️ 转换 Base64 失败: 图像为空")
+    def image_to_base64(self, image_rgb):
+        """
+        直接使用OpenCV的imencode方法进行Base64转换（确保RGB转BGR）
+        """
+        # RGB 转回 BGR（OpenCV默认）
+        image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        success, buffer = cv2.imencode('.png', image_bgr)
+        if not success:
+            print("⚠️ 图像imencode失败！")
             return None
-        
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # 转换为 RGB
-        pil_image = Image.fromarray(image_rgb)
-
-        # **存入缓冲区并编码**
-        buffer = BytesIO()
-        pil_image.save(buffer, format="PNG")
-        base64_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
+        base64_string = base64.b64encode(buffer).decode("utf-8")
         return f"data:image/png;base64,{base64_string}"
+    
+
+
+if __name__ == "__main__":
+    # 测试图片路径（替换成你真实的图片路径）
+    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
+    model_path = "selfie_segmenter.tflite"  # 替换成你的实际模型路径（如果需要）
+
+    # 读取图片
+    image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(f"无法找到图片 {image_path}")
+
+    # 实例化分析器并执行分析
+    visualizer = PoseSegmentationVisualizer(image, model_path)
+    result = visualizer.process_and_visualize()
+
+    # 输出结果信息
+    print("🚩 分析结果：")
+    for key, value in result.items():
+        if key != "processed_body_image":
+            print(f"{key}: {value}")
+
+    # 解码base64图像数据并显示出来（验证图片结果）
+    base64_image = result.get("processed_body_image", None)
+    if base64_image:
+        header, encoded = base64_image.split(",", 1)
+        image_bytes = base64.b64decode(encoded)
+        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+        result_image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+        # 显示最终效果
+        cv2.imshow("Processed Body Image", result_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    else:
+        print("⚠️ 没有可视化图片数据！")

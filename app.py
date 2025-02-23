@@ -249,7 +249,7 @@ def body_analyze():
         print("----------------------------------------")
 
 
-        print(result)
+        # print(result)
 
         return jsonify(result), 200
 

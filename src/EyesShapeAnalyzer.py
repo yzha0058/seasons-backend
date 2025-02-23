@@ -117,8 +117,8 @@ class EyeShapeAnalyzer:
         }
             
         # 权重设定
-        eyesight_weight = 0.4
-        calculated_weight = 0.6  # 30% for each eye
+        eyesight_weight = 0.6
+        calculated_weight = 0.4 # 30% for each eye
 
         # 计算得分
         eyesight_score = curve_straight_score[eyesight_curve_straight] * eyesight_weight

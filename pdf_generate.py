@@ -44,7 +44,7 @@ def generate_pdf(face_info, body_info):
         y_start -= 10
 
     # Draw sections using example data
-    draw_section("脸型分析", face_info["Face_shape"])
+    # draw_section("脸型分析", face_info["Face_shape"])
     draw_section("脸型详细信息", face_info["Face_shape_info"])
     draw_section("唇部详细信息", face_info["Lips_detailed_info"])
     draw_section("眼部详细信息", face_info["eye_detailed_info"])

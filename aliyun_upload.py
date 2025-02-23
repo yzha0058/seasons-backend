@@ -15,6 +15,7 @@ import requests
 import fitz
 import io
 import uuid
+import re
 
 load_dotenv()
 
@@ -65,7 +66,7 @@ def hmacsha256(key, data):
         raise RuntimeError(f"Failed to calculate HMAC-SHA256 due to {e}")
 
 # Function to handle the file upload to OSS
-def upload_to_oss(face_info, body_info):
+def upload_to_oss(face_info, body_info, season_recommend):
     print("Starting to setup upload to cloud")
     # Initialize STS client and get temporary credentials
     config = Config(
@@ -152,6 +153,15 @@ def upload_to_oss(face_info, body_info):
     print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
     hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
     pdf_list.append(hairstyle_pdf)
+
+    if season_recommend:
+        SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params
+        print(f"Downloading Season Recommend PDF: {SEASON_RECOMMEND_PDF_URL}")
+        season_recommend_pdf = download_pdf(SEASON_RECOMMEND_PDF_URL)
+        pdf_list.append(season_recommend_pdf)
+    else:
+        print("No season analysis provided, Skipping recommend.")
+
 
     face_shape_type = face_info["Face_shape_type"]
     ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"

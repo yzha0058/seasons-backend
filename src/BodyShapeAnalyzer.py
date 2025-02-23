@@ -596,10 +596,10 @@ class PoseSegmentationVisualizer:
             print("✅ overlap 副本创建成功，图像大小:", overlap.shape)
 
 
-        self.visualize_pose(overlap, landmarks)
+        self.visualize_pose(segmented_image, landmarks)
 
         # **将最终图像转换为 Base64**
-        base64_image = self.image_to_base64(overlap)
+        base64_image = self.image_to_base64(segmented_image)
 
 
         if not base64_image:
@@ -676,7 +676,7 @@ class PoseSegmentationVisualizer:
             # **颜色定义**
             colors = {
                 "shoulder_width": (255, 0, 0),  # 蓝色
-                "chest_width": (0, 255, 0),  # 绿色
+                # "chest_width": (0, 255, 0),  # 绿色
                 "waist_width": (0, 255, 255),  # 黄色
                 "hip_width": (255, 0, 255),  # 紫色
             }
@@ -686,7 +686,9 @@ class PoseSegmentationVisualizer:
             print("执行画图交点查询")
 
             # **绘制肩、胸、腰、臀线条**
-            body_parts = ["shoulder_width", "chest_width", "waist_width", "hip_width"]
+            body_parts = ["shoulder_width", "waist_width", "hip_width"]
+
+            
             for part in body_parts:
                 mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
                 print(f"当前处理 {part}，中点坐标为: {mid_point}")
@@ -704,7 +706,7 @@ class PoseSegmentationVisualizer:
                         )
                         cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
                     else:
-                        print(f"⚠️ {part} intersections 错误或不完整: {intersections}")
+                        print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
                 else:
                     print(f"⚠️ {part} 中点坐标不存在或为None")
 
@@ -725,13 +727,13 @@ class PoseSegmentationVisualizer:
     
     def image_to_base64(self, image_rgb):
         """
-        直接使用OpenCV的imencode方法进行Base64转换（确保RGB转BGR）
+        直接使用OpenCV的imencode方法进行Base64转换(确保RGB转BGR)
         """
         # RGB 转回 BGR（OpenCV默认）
         image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
         success, buffer = cv2.imencode('.png', image_bgr)
         if not success:
-            print("⚠️ 图像imencode失败！")
+            print("⚠️ 图像imencode失败!")
             return None
         base64_string = base64.b64encode(buffer).decode("utf-8")
         return f"data:image/png;base64,{base64_string}"
@@ -740,7 +742,7 @@ class PoseSegmentationVisualizer:
 
 if __name__ == "__main__":
     # 测试图片路径（替换成你真实的图片路径）
-    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
+    image_path = r"f:\YZHA0058\seasons-backend\src\81025.jpg"
     model_path = "selfie_segmenter.tflite"  # 替换成你的实际模型路径（如果需要）
 
     # 读取图片

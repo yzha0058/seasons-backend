@@ -62,8 +62,8 @@ class PoseAnalyzer:
 
         upper_body_length = np.linalg.norm(np.array(mid_shoulder) - np.array(mid_hip))
 
-        left_ankle = self.get_point(self.landmarks[31])
-        right_ankle = self.get_point(self.landmarks[32])
+        left_ankle = self.get_point(self.landmarks[28])
+        right_ankle = self.get_point(self.landmarks[29])
         mid_ankle = ((left_ankle[0] + right_ankle[0]) / 2, (left_ankle[1] + right_ankle[1]) / 2)
 
         lower_body_length = np.linalg.norm(np.array(mid_hip) - np.array(mid_ankle))
@@ -71,15 +71,17 @@ class PoseAnalyzer:
         upper_body_ratio = upper_body_length / head_height
         lower_body_ratio = lower_body_length / head_height
         body_ratio = lower_body_ratio / upper_body_ratio
+        print("体型比例为:", body_ratio)
+        self.result['body_ratio'] = f"{body_ratio:.2f}"
         return upper_body_ratio, lower_body_ratio, body_ratio
 
     def analyze_proportions(self, body_ratio):
         if body_ratio > 1:
-            if 1 <= body_ratio <= 1.25:
+            if 1 <= body_ratio <= 2:
                 return "五五身"
-            elif 1.26 <= body_ratio <= 1.55:
+            elif 2 <= body_ratio <= 2.1:
                 return "四六身（显高）"
-            elif body_ratio > 1.56:
+            elif body_ratio > 2.1:
                 return "三七身（黄金比例）"
         else:
             return "六四分（显矮）"
@@ -378,7 +380,7 @@ class PoseSegmentationVisualizer:
             distance_between_points = np.linalg.norm(np.array(nearest_left) - np.array(nearest_right))
             print("正确计算左右交点之间的距离")
         else:
-            distance_between_points = None
+            distance_between_points = 0  #None
             print(f"⚠️ 未找到交点, left: {left_intersections}, right: {right_intersections}")
 
         return [nearest_left, nearest_right], distance_between_points
@@ -427,7 +429,8 @@ class PoseSegmentationVisualizer:
             type('Point', (object,), {'x': keypoint2['x'], 'y': keypoint2['y']})
         )
         else:
-            distance = "距离获取失败，请检测环境和光线重新分析"
+            distance = 0
+            print("距离获取失败，请检测环境和光线重新分析")
     
         # 可视化筛选后的交点
         # self.visualize_intersections(keypoint1, filtered_intersections, image)
@@ -596,10 +599,10 @@ class PoseSegmentationVisualizer:
             print("✅ overlap 副本创建成功，图像大小:", overlap.shape)
 
 
-        self.visualize_pose(segmented_image, landmarks)
+        self.visualize_pose(overlap, landmarks)
 
         # **将最终图像转换为 Base64**
-        base64_image = self.image_to_base64(segmented_image)
+        base64_image = self.image_to_base64(overlap)
 
 
         if not base64_image:
@@ -665,50 +668,100 @@ class PoseSegmentationVisualizer:
         print("process_and_visualize() 执行完毕，返回了最终结果(包括图片)")
         return self.result
     
-
     def visualize_pose(self, image, landmarks):
-        """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
+        """ 可视化身体关键点连线 (不绘制轮廓交点，仅绘制 MediaPipe Pose 关键点) """
         print("🚩 visualize_pose() 开始执行")
         try:
             overlay = image.copy()
             alpha = 0.6  # 透明度
 
             # **颜色定义**
-            colors = {
-                "shoulder_width": (255, 0, 0),  # 蓝色
-                # "chest_width": (0, 255, 0),  # 绿色
-                "waist_width": (0, 255, 255),  # 黄色
-                "hip_width": (255, 0, 255),  # 紫色
-            }
+            line_color = (0, 255, 0)  # 绿色
+            point_color = (0, 0, 255)  # 红色
+            thickness = 2
 
-            height, width = image.shape[0:2]
+            height, width = image.shape[:2]
 
-            print("执行画图交点查询")
+            print("🎯 开始绘制 MediaPipe Pose 关键点连线")
 
-            # **绘制肩、胸、腰、臀线条**
-            body_parts = ["shoulder_width", "waist_width", "hip_width"]
+            # **MediaPipe Pose 关键点连接关系**
+            pose_connections = [
+                # 上半身
+                (11, 12), (11, 23), (12, 24), (23, 24),  # 肩膀 & 躯干
+                (11, 13), (12, 14), (13, 15), (14, 16), (15, 17), (16, 18),  # 手臂
+                (15, 19), (16, 20), (19, 21), (20, 22),  # 手部
+                # 下半身
+                (23, 25), (24, 26), (25, 27), (26, 28), (27, 29), (28, 30), (29, 31), (30, 32)  # 腿部
+            ]
+
+            # **绘制关键点连线**
+            for (p1, p2) in pose_connections:
+                if p1 in range(11, 33) and p2 in range(11, 33):  # 只绘制11-32号点
+                    pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
+                    pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
+                    cv2.line(overlay, pt1, pt2, line_color, thickness, cv2.LINE_AA)
+
+            # **绘制关键点**
+            for i in range(11, 33):
+                x, y = int(landmarks[i].x * width), int(landmarks[i].y * height)
+                cv2.circle(overlay, (x, y), 4, point_color, -1)
+
+            # **融合透明层**
+            cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+            print("✅ visualize_pose() 执行完毕")
+        except Exception as e:
+            print(f"⚠️ visualize_pose() 执行出错: {e}")
+
+
+
+
+
+    
+    # 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部)
+    # def visualize_pose(self, image, landmarks):
+        # """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
+        # print("🚩 visualize_pose() 开始执行")
+        # try:
+        #     overlay = image.copy()
+        #     alpha = 0.6  # 透明度
+
+        #     # **颜色定义**
+        #     colors = {
+        #         "shoulder_width": (255, 0, 0),  # 蓝色
+        #         # "chest_width": (0, 255, 0),  # 绿色
+        #         "waist_width": (0, 255, 255),  # 黄色
+        #         "hip_width": (255, 0, 255),  # 紫色
+        #     }
+
+        #     height, width = image.shape[0:2]
+
+        #     print("执行画图交点查询")
+
+        #     # **绘制肩、胸、腰、臀线条**
+        #     body_parts = ["shoulder_width", "waist_width", "hip_width"]
 
             
-            for part in body_parts:
-                mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
-                print(f"当前处理 {part}，中点坐标为: {mid_point}")
-                if mid_point is not None:
-                    intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
-                    print(f"画图时，🚩 {part} 的交点: {intersections}")
-                    if intersections and len(intersections) == 2:
-                        pt1 = (
-                            int(intersections[0][0] * width),
-                            int(intersections[0][1] * height)
-                        )
-                        pt2 = (
-                            int(intersections[1][0] * width),
-                            int(intersections[1][1] * height)
-                        )
-                        cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
-                    else:
-                        print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
-                else:
-                    print(f"⚠️ {part} 中点坐标不存在或为None")
+        #     for part in body_parts:
+        #         mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
+        #         print(f"当前处理 {part}，中点坐标为: {mid_point}")
+        #         if mid_point is not None:
+        #             intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
+        #             print(f"画图时，🚩 {part} 的交点: {intersections}")
+        #             if intersections and len(intersections) == 2:
+        #                 pt1 = (
+        #                     int(intersections[0][0] * width),
+        #                     int(intersections[0][1] * height)
+        #                 )
+        #                 pt2 = (
+        #                     int(intersections[1][0] * width),
+        #                     int(intersections[1][1] * height)
+        #                 )
+        #                 cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
+        #             else:
+        #                 print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
+        #         else:
+        #             print(f"⚠️ {part} 中点坐标不存在或为None")
 
             # **绘制腿部关键点 (11-32 除了 0-10)**
             # pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
@@ -718,12 +771,12 @@ class PoseSegmentationVisualizer:
             #     pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
             #     cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
 
-            # **融合透明层**
-            cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+        #     # **融合透明层**
+        #     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
 
-            print("✅ visualize_pose() 执行完毕")
-        except Exception as e:
-            print(f"⚠️ visualize_pose() 执行出错: {e}")
+        #     print("✅ visualize_pose() 执行完毕")
+        # except Exception as e:
+        #     print(f"⚠️ visualize_pose() 执行出错: {e}")
     
     def image_to_base64(self, image_rgb):
         """
@@ -742,7 +795,7 @@ class PoseSegmentationVisualizer:
 
 if __name__ == "__main__":
     # 测试图片路径（替换成你真实的图片路径）
-    image_path = r"f:\YZHA0058\seasons-backend\src\81025.jpg"
+    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_2_body.jpg"
     model_path = "selfie_segmenter.tflite"  # 替换成你的实际模型路径（如果需要）
 
     # 读取图片
@@ -750,7 +803,19 @@ if __name__ == "__main__":
     if image is None:
         raise FileNotFoundError(f"无法找到图片 {image_path}")
 
-    # 实例化分析器并执行分析
+    # **实例化 PoseAnalyzer 并分析 body_ratio**
+    pose_analyzer = PoseAnalyzer(image)
+    pose_results = pose_analyzer.analyze()
+    
+    # 获取 body_ratio
+    body_ratio = pose_results.get("上下半身比例", "N/A")
+    print(f"📏 计算出的 body_ratio: {body_ratio}")
+
+    # 获取 scbl
+    scbl = pose_results.get("身材比例判断", "N/A")
+    print(f"📏 计算出的 scbl: {scbl}")
+
+    # **实例化 PoseSegmentationVisualizer 并执行分析**
     visualizer = PoseSegmentationVisualizer(image, model_path)
     result = visualizer.process_and_visualize()
 
@@ -760,7 +825,7 @@ if __name__ == "__main__":
         if key != "processed_body_image":
             print(f"{key}: {value}")
 
-    # 解码base64图像数据并显示出来（验证图片结果）
+    # 解码 base64 图像数据并显示出来（验证图片结果）
     base64_image = result.get("processed_body_image", None)
     if base64_image:
         header, encoded = base64_image.split(",", 1)
@@ -768,9 +833,27 @@ if __name__ == "__main__":
         image_array = np.frombuffer(image_bytes, dtype=np.uint8)
         result_image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
-        # 显示最终效果
-        cv2.imshow("Processed Body Image", result_image)
+        # **确保图片适应窗口**
+        screen_res = 1280, 720  # 设置合适的屏幕分辨率
+        scale_width = screen_res[0] / result_image.shape[1]
+        scale_height = screen_res[1] / result_image.shape[0]
+        scale = min(scale_width, scale_height)  # 计算缩放比例
+        new_width = int(result_image.shape[1] * scale)
+        new_height = int(result_image.shape[0] * scale)
+        resized_image = cv2.resize(result_image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+        # **设置 OpenCV 窗口可调整大小**
+        cv2.namedWindow("Processed Body Image", cv2.WINDOW_NORMAL)
+        cv2.imshow("Processed Body Image", resized_image)
+        print("🔍 关闭窗口请按任意键...")
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+
+        # **保存图片**
+        save_path = "processed_body_image.png"
+        cv2.imwrite(save_path, result_image)
+        print(f"✅ 处理后的图片已保存: {save_path}")
     else:
         print("⚠️ 没有可视化图片数据！")
+    
+    

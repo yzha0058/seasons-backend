@@ -599,7 +599,7 @@ class PoseSegmentationVisualizer:
             print("✅ overlap 副本创建成功，图像大小:", overlap.shape)
 
 
-        self.visualize_pose(overlap, landmarks)
+        self.visualize_pose(overlap, landmarks) #segmented_image
 
         # **将最终图像转换为 Base64**
         base64_image = self.image_to_base64(overlap)
@@ -718,65 +718,65 @@ class PoseSegmentationVisualizer:
 
 
     
-    # 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部)
+    # # 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部)
     # def visualize_pose(self, image, landmarks):
-        # """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
-        # print("🚩 visualize_pose() 开始执行")
-        # try:
-        #     overlay = image.copy()
-        #     alpha = 0.6  # 透明度
+    #     """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
+    #     print("🚩 visualize_pose() 开始执行")
+    #     try:
+    #         overlay = image.copy()
+    #         alpha = 0.6  # 透明度
 
-        #     # **颜色定义**
-        #     colors = {
-        #         "shoulder_width": (255, 0, 0),  # 蓝色
-        #         # "chest_width": (0, 255, 0),  # 绿色
-        #         "waist_width": (0, 255, 255),  # 黄色
-        #         "hip_width": (255, 0, 255),  # 紫色
-        #     }
+    #         # **颜色定义**
+    #         colors = {
+    #             "shoulder_width": (255, 0, 0),  # 蓝色
+    #             # "chest_width": (0, 255, 0),  # 绿色
+    #             "waist_width": (0, 255, 255),  # 黄色
+    #             "hip_width": (255, 0, 255),  # 紫色
+    #         }
 
-        #     height, width = image.shape[0:2]
+    #         height, width = image.shape[0:2]
 
-        #     print("执行画图交点查询")
+    #         print("执行画图交点查询")
 
-        #     # **绘制肩、胸、腰、臀线条**
-        #     body_parts = ["shoulder_width", "waist_width", "hip_width"]
+    #         # **绘制肩、胸、腰、臀线条**
+    #         body_parts = ["shoulder_width", "waist_width", "hip_width"]
 
             
-        #     for part in body_parts:
-        #         mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
-        #         print(f"当前处理 {part}，中点坐标为: {mid_point}")
-        #         if mid_point is not None:
-        #             intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
-        #             print(f"画图时，🚩 {part} 的交点: {intersections}")
-        #             if intersections and len(intersections) == 2:
-        #                 pt1 = (
-        #                     int(intersections[0][0] * width),
-        #                     int(intersections[0][1] * height)
-        #                 )
-        #                 pt2 = (
-        #                     int(intersections[1][0] * width),
-        #                     int(intersections[1][1] * height)
-        #                 )
-        #                 cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
-        #             else:
-        #                 print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
-        #         else:
-        #             print(f"⚠️ {part} 中点坐标不存在或为None")
+    #         for part in body_parts:
+    #             mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
+    #             print(f"当前处理 {part}，中点坐标为: {mid_point}")
+    #             if mid_point is not None:
+    #                 intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
+    #                 print(f"画图时，🚩 {part} 的交点: {intersections}")
+    #                 if intersections and len(intersections) == 2:
+    #                     pt1 = (
+    #                         int(intersections[0][0] * width),
+    #                         int(intersections[0][1] * height)
+    #                     )
+    #                     pt2 = (
+    #                         int(intersections[1][0] * width),
+    #                         int(intersections[1][1] * height)
+    #                     )
+    #                     cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
+    #                 else:
+    #                     print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
+    #             else:
+    #                 print(f"⚠️ {part} 中点坐标不存在或为None")
 
-            # **绘制腿部关键点 (11-32 除了 0-10)**
-            # pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-            # for i in range(len(pose_landmarks) - 1):
-            #     p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
-            #     pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
-            #     pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
-            #     cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
+    #         # **绘制腿部关键点 (11-32 除了 0-10)**
+    #         pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+    #         for i in range(len(pose_landmarks) - 1):
+    #             p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
+    #             pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
+    #             pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
+    #             cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
 
-        #     # **融合透明层**
-        #     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    #         # **融合透明层**
+    #         cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
 
-        #     print("✅ visualize_pose() 执行完毕")
-        # except Exception as e:
-        #     print(f"⚠️ visualize_pose() 执行出错: {e}")
+    #         print("✅ visualize_pose() 执行完毕")
+    #     except Exception as e:
+    #         print(f"⚠️ visualize_pose() 执行出错: {e}")
     
     def image_to_base64(self, image_rgb):
         """
@@ -795,7 +795,7 @@ class PoseSegmentationVisualizer:
 
 if __name__ == "__main__":
     # 测试图片路径（替换成你真实的图片路径）
-    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_2_body.jpg"
+    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
     model_path = "selfie_segmenter.tflite"  # 替换成你的实际模型路径（如果需要）
 
     # 读取图片

@@ -102,7 +102,6 @@ class EyeShapeAnalyzer:
         eyesight_mapping = {
             "A": "偏曲",
             "B": "偏直",
-            "C": "曲直适中"
         }
         
         eyesight_curve_straight = eyesight_mapping.get(self.eyesight, "曲直适中")  # 避免异常值

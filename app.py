@@ -120,7 +120,7 @@ def body_analyze():
 
         face_result = data.get("face_result")
 
-        print(face_result)
+        # print(face_result)
 
         # 检查必需的数据是否存在。
         # 【这里三围如果没输入是否可以跳过？身材分析determine_body_shape没有用到三围】 
@@ -237,6 +237,7 @@ def body_analyze():
             "body_style": volume_result.get('Final_Curve_Straight', '未知'), #"Straight",
             "body_type": three_d_model.result.get('body_type', '未知'), #"A",
             "leg_type": three_d_model.result.get('leg_type', '未知'), #"O-leg",
+            # "processed_body_image": three_d_model.result.get('processed_body_image', '未知'),
         }
 
                 # 添加以下打印语句
@@ -402,7 +403,6 @@ def face_analyze():
         print("Face Shape Type:", face_analyzer.result.get('七种脸型分类', '未知'))
         print("----------------------------------------")
 
-        print("Session after face-analyze:", dict(session))  # 打印 session 数据
 
         return jsonify(result), 200
 

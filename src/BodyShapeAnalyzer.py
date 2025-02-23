@@ -6,6 +6,9 @@ import math
 import os
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+import base64
+from io import BytesIO
+from PIL import Image
 
 
 class PoseAnalyzer:
@@ -279,6 +282,8 @@ class ImageSegmentationProcessor:
     
 class PoseSegmentationVisualizer:
     def __init__(self, image, model_path):
+        self.image = image
+        self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         self.pose_analyzer = PoseAnalyzer(image)
         self.segmentation_processor = ImageSegmentationProcessor(image, model_path)
         self.intersection_points = []  # 存储交点的列表
@@ -287,6 +292,9 @@ class PoseSegmentationVisualizer:
         self.result = {}
 
     def calculate_Body_midpoints(self, landmarks):
+        if landmarks is None:
+            print("⚠️ landmarks 为空，无法计算中点！")
+            return None, None, None, None
         # 计算肩部和臀部的中点
         shoulder_mid = self.calculate_midpoint(landmarks[11], landmarks[12])
         hip_mid = self.calculate_midpoint(landmarks[23], landmarks[24])
@@ -326,7 +334,9 @@ class PoseSegmentationVisualizer:
         """
         x = keypoint['x']
         y = keypoint['y']
-    
+
+        print(f"正在查找 {keypoint} 在轮廓中的交点...")  # 追踪 keypoint 值
+
         # 查找可能的交点
         left_intersections = []
         right_intersections = []
@@ -352,6 +362,8 @@ class PoseSegmentationVisualizer:
                         right_intersections.append(pt1_normalized)
                     if pt2_normalized[0] > x:
                         right_intersections.append(pt2_normalized)
+
+
     
         # 找到最近的左侧和右侧交点，考虑 y 坐标的接近程度
         left_intersections.sort(key=lambda p: (abs(p[0] - x), abs(p[1] - y)))
@@ -363,9 +375,11 @@ class PoseSegmentationVisualizer:
         # 计算左右交点之间的距离
         if nearest_left and nearest_right:
             distance_between_points = np.linalg.norm(np.array(nearest_left) - np.array(nearest_right))
+            print("正确计算左右交点之间的距离")
         else:
             distance_between_points = None
-    
+            print(f"⚠️ 未找到交点, left: {left_intersections}, right: {right_intersections}")
+
         return [nearest_left, nearest_right], distance_between_points
     
     def calculate_intersections(self, point1, point2, contours, image, landmarks=None):
@@ -518,16 +532,15 @@ class PoseSegmentationVisualizer:
         # 处理姿态分析
         self.pose_analyzer.process_image()
         landmarks = self.pose_analyzer.landmarks
+
         
         # 计算肩宽为关键点11和12之间的距离并可视化
-        shoulder_width = self.calculate_distance(landmarks[11], landmarks[12])
-        self.widths["shoulder_width"] = 1.2 * shoulder_width   #女生的肩部是11和12距离的1.1倍，如果健身导致肩部很宽 需要换为之前的算法
+        shoulder_width = self.calculate_distance(landmarks[11], landmarks[12]) * 1.2
+         #女生的肩部是11和12距离的1.2倍，如果健身导致肩部很宽 需要换为之前的算法
         
-        pt1 = (int(landmarks[11].x * segmented_image.shape[1]), int(landmarks[11].y * segmented_image.shape[0]))
-        pt2 = (int(landmarks[12].x * segmented_image.shape[1]), int(landmarks[12].y * segmented_image.shape[0]))
-        # cv2.circle(segmented_image, pt1, 5, (255, 255, 255), -1)
-        # cv2.circle(segmented_image, pt2, 5, (255, 255, 255), -1)
-        # cv2.line(segmented_image, pt1, pt2, (0, 255, 0), 2)
+        # pt1 = (int(landmarks[11].x * segmented_image.shape[1]), int(landmarks[11].y * segmented_image.shape[0]))
+        # pt2 = (int(landmarks[12].x * segmented_image.shape[1]), int(landmarks[12].y * segmented_image.shape[0]))
+
 
         
         # 计算中点
@@ -548,20 +561,44 @@ class PoseSegmentationVisualizer:
             "waist_width": waist_mid,
             "hip_width": hip_mid
         }
+
+        # 计算肩宽并储存
+        shoulder_intersections, shoulder_distance = self.find_nearest_intersections(shoulder_mid, contours)
+
+        if not shoulder_intersections or len(shoulder_intersections) < 2:
+            print("⚠️ shoulder 轮廓点计算失败，返回值:", shoulder_intersections)
+            self.widths["shoulder_width"] = shoulder_width  # 防止后续错误
+        else:
+            self.widths["shoulder_width"] = shoulder_distance
         
         # 计算并可视化交点
         for key, keypoint in keypoints.items():
             intersections, distances = self.find_nearest_intersections(keypoint, contours)
             
-            # print(f"Keypoint: {keypoint}, Intersections: {intersections}, Distances: {distances}") 
-            # self.visualize_intersections(keypoint, intersections, segmented_image)
-            
-            
-            self.widths[key] = distances  #储存腰围和 臀围、胸围
+            if not intersections or len(intersections) < 2 or distances is None:
+                print(f"⚠️ {key} 轮廓点计算失败，返回值: {intersections},{len(intersections)},距离是{distances}")
+  
+            self.widths[key] = distances
+
+        # **可视化身体关键点和连线**
+        overlap = self.image_rgb.copy()
+        if overlap is None or overlap.size == 0:
+            print("⚠️ overlap 副本创建失败！")
+        else:
+            print("✅ overlap 副本创建成功，图像大小:", overlap.shape)
+
+
+        self.visualize_pose(overlap, landmarks)
+
+        # **将最终图像转换为 Base64**
+        base64_image = self.image_to_base64(overlap)
+        if not base64_image:
+            print("⚠️ Base64 编码失败！")
+        else:
+            print("✅ Base64 编码成功！数据大小:", len(base64_image))
+        self.result["processed_body_image"] = base64_image
         
-        # print(self.widths.get("shoulder_width", 0))
-        # print(self.widths.get("waist_width", 0))
-        # print(self.widths.get("hip_width", 0))
+
         
         # 使用宽度信息判断身体形状
         self.bodytype = self.determine_body_shape(
@@ -614,4 +651,63 @@ class PoseSegmentationVisualizer:
             self.result["腿型"] = "正常腿型"
             self.result["leg_type"] = "Normal-leg"
 
+        print("process_and_visualize() 执行完毕，返回了最终结果(包括图片)")
         return self.result
+    
+
+    def visualize_pose(self, image, landmarks):
+        """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
+        print("🚩 visualize_pose() 开始执行")
+        try:
+            overlay = image.copy()
+            alpha = 0.6  # 透明度
+
+            # **颜色定义**
+            colors = {
+                "shoulder": (255, 0, 0),  # 蓝色
+                "chest": (0, 255, 0),  # 绿色
+                "waist": (0, 255, 255),  # 黄色
+                "hip": (255, 0, 255),  # 紫色
+                "leg": (0, 165, 255)  # 橙色
+            }
+
+            # **绘制肩、胸、腰、臀线条**
+            body_parts = ["shoulder", "chest", "waist", "hip"]
+            for part in body_parts:
+                mid_point = self.widths.get(f"{part}_width", None)
+                if mid_point:
+                    intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
+                    if intersections and len(intersections) == 2:
+                        cv2.line(overlay, tuple(intersections[0]), tuple(intersections[1]), colors[part], 2, cv2.LINE_AA)
+
+            # **绘制腿部关键点 (11-32 除了 0-10)**
+            pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+            for i in range(len(pose_landmarks) - 1):
+                p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
+                pt1 = (int(landmarks[p1].x * image.shape[1]), int(landmarks[p1].y * image.shape[0]))
+                pt2 = (int(landmarks[p2].x * image.shape[1]), int(landmarks[p2].y * image.shape[0]))
+                cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
+
+            # **融合透明层**
+            cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+            print("✅ visualize_pose() 执行完毕")
+        except Exception as e:
+            print(f"⚠️ visualize_pose() 执行出错: {e}")
+
+    
+    def image_to_base64(self, image):
+        """ 将 OpenCV 图像转换为 Base64 编码 """
+        if image is None or image.size == 0:
+            print("⚠️ 转换 Base64 失败: 图像为空")
+            return None
+        
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # 转换为 RGB
+        pil_image = Image.fromarray(image_rgb)
+
+        # **存入缓冲区并编码**
+        buffer = BytesIO()
+        pil_image.save(buffer, format="PNG")
+        base64_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return f"data:image/png;base64,{base64_string}"

@@ -123,6 +123,23 @@ class FaceAnalyzer:
 
         self.result["三庭比例"] = f"{ratio_1} : {ratio_2} : {ratio_3}"
         return [ratio_1, ratio_2, ratio_3]
+    
+    def draw_dashed_line(self, img, pt1, pt2, color, thickness=1, dash_length=10):
+        """ 绘制虚线 (OpenCV 没有内置支持, 需要手动计算点) """
+        gap = dash_length  # 间隔
+        dist = np.linalg.norm(np.array(pt1) - np.array(pt2))  # 计算两点距离
+        num_dashes = int(dist / (2 * gap))  # 计算虚线的段数
+
+        for i in range(num_dashes):
+            start = (
+                int(pt1[0] + (pt2[0] - pt1[0]) * (2 * i) / (2 * num_dashes)),
+                int(pt1[1] + (pt2[1] - pt1[1]) * (2 * i) / (2 * num_dashes)),
+            )
+            end = (
+                int(pt1[0] + (pt2[0] - pt1[0]) * (2 * i + 1) / (2 * num_dashes)),
+                int(pt1[1] + (pt2[1] - pt1[1]) * (2 * i + 1) / (2 * num_dashes)),
+            )
+            cv2.line(img, start, end, color, thickness, cv2.LINE_AA)
 
     def calculate_face_ratios(self):
         """计算三线比例和脸长脸宽比例（基于人脸框的顶点和中心点）"""
@@ -162,21 +179,42 @@ class FaceAnalyzer:
         color_cheekbone = (0, 255, 255)  # 黄色
         color_jaw = (0, 255, 0)  # 绿色
         color_face_length = (255, 255, 0)  # 青色
+        color_guideline = (0, 0, 255)  # 红色（水平/垂直辅助线）
 
         # **调整粗细**
         thickness_forehead = 2  # 额头线条更细
         thickness_cheekbone = 2  # 颧骨线条更细
         thickness_jaw = 2  # 下颌线条略粗
         thickness_face_length = 2  # 脸长线条略粗
+        thickness_guideline = 1  # 辅助线更细
 
         overlay = self.image_rgb.copy()  # 创建透明层
         alpha = 0.6  # 透明度
+
+        #计算检测框的宽度和高度
+        x1, y1, x2, y2 = self.x_left, self.y_top, self.x_right, self.y_bottom
 
         # **绘制半透明测量线条**
         cv2.line(overlay, tuple(point_21), tuple(point_251), color_forehead, thickness_forehead, cv2.LINE_AA)  # 额头
         cv2.line(overlay, tuple(point_234), tuple(point_454), color_cheekbone, thickness_cheekbone, cv2.LINE_AA)  # 颧骨
         cv2.line(overlay, tuple(point_58), tuple(point_288), color_jaw, thickness_jaw, cv2.LINE_AA)  # 下颌
         cv2.line(overlay, tuple(point_top_center), tuple(point_152), color_face_length, thickness_face_length, cv2.LINE_AA)  # 脸长
+
+        # **绘制关键点 2 和 9 的水平虚线 (限制在 x1 ~ x2 内)**
+        horizontal_points = [2, 9]
+        for point_index in horizontal_points:
+            point = self.get_point(point_index)
+            y = point[1]
+            if y1 <= y <= y2:  # 仅在检测框内绘制
+                self.draw_dashed_line(overlay, (x1, y), (x2, y), color_guideline, thickness_guideline)
+
+        # **绘制关键点 130, 133, 362, 359 的垂直虚线 (限制在 y1 ~ y2 内)**
+        vertical_points = [130, 133, 362, 359]
+        for point_index in vertical_points:
+            point = self.get_point(point_index)
+            x = point[0]
+            if x1 <= x <= x2:  # 仅在检测框内绘制
+                self.draw_dashed_line(overlay, (x, y1), (x, y2), color_guideline, thickness_guideline)
 
         # **绘制端点**
         points = [point_21, point_251, point_234, point_454, point_58, point_288, point_top_center, point_152]
@@ -210,8 +248,8 @@ class FaceAnalyzer:
         else:
             chin_type = "机器人下巴（方形下巴）"
 
-        print(f"下巴形状: {chin_type}")
-        print(f"下巴宽长比: {chin_length_width_ratio:.2f}")
+        # print(f"下巴形状: {chin_type}")
+        # print(f"下巴宽长比: {chin_length_width_ratio:.2f}")
         self.result["下巴形状"] = f"{chin_type}"
 
         # 在图像上绘制下巴连接线
@@ -455,7 +493,7 @@ class FaceAnalyzer:
         # 注意：determine_face_shape里已经调用了analyze_chin_shape和calculate_face_ratios，会再次执行，但不影响最终结果
         self.determine_face_shape()
         self.determine_three_ratios_type()
-        print(self.result)
+
 
         # Convert back to BGR before encoding
         image_bgr = cv2.cvtColor(self.image_rgb, cv2.COLOR_RGB2BGR)
@@ -463,6 +501,10 @@ class FaceAnalyzer:
         # Encode image to base64
         _, buffer = cv2.imencode('.png', image_bgr)  # Convert image to PNG format
         image_base64 = base64.b64encode(buffer).decode("utf-8")  # Encode to base64
+        
+        print("----------------------------------------")   
+        print(f"人脸图片转换完成")
+        print("----------------------------------------")   
 
         # Store the base64 string in the result
         self.result["image_base64"] = f"data:image/png;base64,{image_base64}"

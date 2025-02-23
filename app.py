@@ -237,7 +237,7 @@ def body_analyze():
             "body_style": volume_result.get('Final_Curve_Straight', '未知'), #"Straight",
             "body_type": three_d_model.result.get('body_type', '未知'), #"A",
             "leg_type": three_d_model.result.get('leg_type', '未知'), #"O-leg",
-            # "processed_body_image": three_d_model.result.get('processed_body_image', '未知'),
+            "processed_body_image": three_d_model.result.get('processed_body_image', '未知'),
         }
 
                 # 添加以下打印语句

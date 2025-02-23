@@ -95,7 +95,7 @@ class FaceVolumeAnalyzer:
             elif total_curve_score < 0:
                 style = "前卫"
             else:
-                style = "自然"
+                style = "优雅自然"
 
         # 风格翻译成英文
         style_mapping = {
@@ -107,7 +107,7 @@ class FaceVolumeAnalyzer:
             "前卫": "AvantGarde"
         }
         
-        Face_style = style_mapping.get(style, "Unknown")
+        Face_style = style_mapping.get(style, "Elegant")
                 
         self.result["脸大脸小"] = face_size
         self.result["量感分析"] = face_volume

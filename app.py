@@ -58,8 +58,10 @@ def pdf_upload():
     face_info = data.get('face_info')
     body_info = data.get('body_info')
     season_recommend = data.get('season_recommend')
+    face_image = data.get('face_image')
+    body_image = data.get('body_image')
 
-    result = upload_to_oss(face_info, body_info, season_recommend)
+    result = upload_to_oss(face_info, body_info, season_recommend, face_image, body_image)
     return jsonify(result)
 
 @app.route('/mediapipe-detect', methods=['POST'])

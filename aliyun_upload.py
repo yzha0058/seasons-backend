@@ -66,7 +66,7 @@ def hmacsha256(key, data):
         raise RuntimeError(f"Failed to calculate HMAC-SHA256 due to {e}")
 
 # Function to handle the file upload to OSS
-def upload_to_oss(face_info, body_info, season_recommend):
+def upload_to_oss(face_info, body_info, season_recommend, face_image, body_image):
     print("Starting to setup upload to cloud")
     # Initialize STS client and get temporary credentials
     config = Config(
@@ -122,29 +122,7 @@ def upload_to_oss(face_info, body_info, season_recommend):
     result = hmacsha256(signing_key, base64_policy)
     signature = result.hex()
 
-
-    ###################################################################################################################
-    # Example face analysis result (your provided data)
-    # result = {
-    #     "Face_shape": {"三庭比例": "1 : 1.25 : 1.05", "三线比例": "0.95 : 1 : 0.86", "下巴形状": "钝弧（圆形下巴）", "五眼比例": "0.62 : 1 : 1.15 : 1.02 : 0.6",
-    #                    "脸型判断结果": "菱形脸", "脸型曲直": "偏直", "脸部风格": "御姐成熟脸", "脸长和脸宽的 比例": "1.35"},
-    #     "Face_shape_info": {"三庭比例": "1 : 1.21 : 1.05", "三线比例": "0.95 : 1 : 0.86", "下巴形状": "钝弧（圆 形下巴）", "五眼比例": "0.62 : 1 : 1.15 : 1.02 : 0.6",
-    #                         "脸型判断结果": "菱形脸", "脸型曲直": "偏直", "脸部风格": "御姐成熟脸", "脸长和脸宽的比例": "1.35"},
-    #     "Lips_detailed_info": {"上下唇比例": 1.546, "上唇": "偏厚偏曲", "下唇": "偏薄偏直", "唇形": "性感M唇", "唇部数据": "圆唇, 偏薄, M型唇峰", "曲直结果": "偏曲"},
-    #     "eye_detailed_info": {"右眼曲直": "偏直", "右眼眼长和眼高的比例": "2.27", "右眼类型": "细长眼", "左眼曲直": "偏直", "左眼眼长和眼高的比例": "2.75",
-    #                           "左 眼类型": "柳叶眼", "眼型综合曲直": "偏直"},
-    #     "eye_shape": {"右眼内眼角角度": "57.48°", "右眼曲直": "偏直", "右眼特征": "细长", "右眼类型": "细长眼", "右眼长高比例": "2.27",
-    #                   "左眼内眼角角度": "41.19°", "左眼曲直": "偏直", "左眼特征": "细长", "左眼类型": "柳叶眼", "左眼长高比例": "2.75", "眼型曲直综合": "偏直"},
-    #     "lip_shape": {"上下唇比例": 1.546, "上唇": "偏厚偏曲", "下唇": "偏薄偏直", "唇形": "性感M唇", "唇部数据": "圆唇, 偏薄, M型唇峰",
-    #                   "嘴角": "嘴角平坦, 右嘴角 倾斜度:0.02°, 左嘴角倾斜度:0.02°", "曲直结果": "偏曲"},
-    #     "nose_detailed_info": {"右脸山根": "山根靠上, 偏直", "右鼻翼曲率": "0.666", "山根曲直": "偏直", "左脸山根": "山根靠上, 偏直",
-    #                            "左鼻翼曲率": "0.333", "鼻型综合曲直": "偏直", "鼻孔比例": "38.28%", "鼻翼宽窄判断": "宽鼻翼,偏曲", "鼻翼曲直判断": "偏曲"},
-    #     "nose_shape": {"右脸山根": "山根靠上, 偏直", "右鼻翼曲率": "0.666", "山根曲直": "偏直", "左脸山根": "山根靠上, 偏直",
-    #                    "左鼻翼曲率": "0.333", "鼻型综合曲直": "偏直", "鼻孔曲直": "偏曲", "鼻孔比例": "38.28%", "鼻翼宽窄": "宽鼻翼,偏曲", "鼻翼曲线综合判断": "偏曲"}
-    # }
-    # result = face_info
-
-    generated_pdf = generate_pdf(face_info, body_info)
+    generated_pdf = generate_pdf(face_info, body_info, face_image, body_image)
 
     pdf_list = [generated_pdf]  # Start with the generated PDF
     
@@ -154,38 +132,38 @@ def upload_to_oss(face_info, body_info, season_recommend):
     hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
     pdf_list.append(hairstyle_pdf)
 
-    if season_recommend:
-        SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params
-        print(f"Downloading Season Recommend PDF: {SEASON_RECOMMEND_PDF_URL}")
-        season_recommend_pdf = download_pdf(SEASON_RECOMMEND_PDF_URL)
-        pdf_list.append(season_recommend_pdf)
-    else:
-        print("No season analysis provided, Skipping recommend.")
+    # if season_recommend:
+    #     SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params
+    #     print(f"Downloading Season Recommend PDF: {SEASON_RECOMMEND_PDF_URL}")
+    #     season_recommend_pdf = download_pdf(SEASON_RECOMMEND_PDF_URL)
+    #     pdf_list.append(season_recommend_pdf)
+    # else:
+    #     print("No season analysis provided, Skipping recommend.")
 
 
-    face_shape_type = face_info["Face_shape_type"]
-    ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"
-    print(f"Downloading Accessory PDF: {ACCESSORY_PDF_URL}")
-    accessory_pdf = download_pdf(ACCESSORY_PDF_URL)
-    pdf_list.append(accessory_pdf)
+    # face_shape_type = face_info["Face_shape_type"]
+    # ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"
+    # print(f"Downloading Accessory PDF: {ACCESSORY_PDF_URL}")
+    # accessory_pdf = download_pdf(ACCESSORY_PDF_URL)
+    # pdf_list.append(accessory_pdf)
 
-    body_style = body_info["body_style"]
-    BODYSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/outfitstyle/outfitstyle-{body_style}.pdf"
-    print(f"Downloading BodyStyle PDF: {BODYSTYLE_PDF_URL}")
-    bodystyle_pdf = download_pdf(BODYSTYLE_PDF_URL)
-    pdf_list.append(bodystyle_pdf)
+    # body_style = body_info["body_style"]
+    # BODYSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/outfitstyle/outfitstyle-{body_style}.pdf"
+    # print(f"Downloading BodyStyle PDF: {BODYSTYLE_PDF_URL}")
+    # bodystyle_pdf = download_pdf(BODYSTYLE_PDF_URL)
+    # pdf_list.append(bodystyle_pdf)
 
-    body_type = body_info["body_type"]
-    BODYTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{body_type}.pdf"
-    print(f"Downloading BodyType PDF: {BODYTYPE_PDF_URL}")
-    bodytype_pdf = download_pdf(BODYTYPE_PDF_URL)
-    pdf_list.append(bodytype_pdf)
+    # body_type = body_info["body_type"]
+    # BODYTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{body_type}.pdf"
+    # print(f"Downloading BodyType PDF: {BODYTYPE_PDF_URL}")
+    # bodytype_pdf = download_pdf(BODYTYPE_PDF_URL)
+    # pdf_list.append(bodytype_pdf)
 
-    leg_type = body_info["leg_type"]
-    LEGTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{leg_type}.pdf"
-    print(f"Downloading LegType PDF: {LEGTYPE_PDF_URL}")
-    legtype_pdf = download_pdf(LEGTYPE_PDF_URL)
-    pdf_list.append(legtype_pdf)
+    # leg_type = body_info["leg_type"]
+    # LEGTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{leg_type}.pdf"
+    # print(f"Downloading LegType PDF: {LEGTYPE_PDF_URL}")
+    # legtype_pdf = download_pdf(LEGTYPE_PDF_URL)
+    # pdf_list.append(legtype_pdf)
 
     # Merge all PDFs
     print("Merging PDFs")
@@ -218,6 +196,9 @@ def upload_to_oss(face_info, body_info, season_recommend):
     print("Form fields:", fields)
 
     print("Uploading to cloud")
+
+    return {'message': 'File uploaded successfully', 'file_url': f"{host}/{key}"}
+
     # Perform the file upload
     with open(local_file_path, 'rb') as file:
         files = {'file': (local_file_path, file)}

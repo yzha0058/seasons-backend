@@ -126,11 +126,11 @@ def upload_to_oss(face_info, body_info, season_recommend, face_image, body_image
 
     pdf_list = [generated_pdf]  # Start with the generated PDF
     
-    face_style = body_info["Face_style"]
-    HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
-    print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
-    hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
-    pdf_list.append(hairstyle_pdf)
+    # face_style = body_info["Face_style"]
+    # HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
+    # print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
+    # hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
+    # pdf_list.append(hairstyle_pdf)
 
     # if season_recommend:
     #     SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params

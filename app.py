@@ -19,6 +19,7 @@ from src.FaceShapeAnalyzer import FaceAnalyzer
 from src.FaceVolumeAnalyzer import FaceVolumeAnalyzer
 from datetime import timedelta
 from aliyun_upload import upload_to_oss
+import torch
 
 
 app = Flask(__name__)
@@ -198,65 +199,169 @@ def body_analyze():
         
         # Analyze body shape
         body_analyzer = PoseAnalyzer(image)
-        body_analyzer.analyze()
-        body_analyzer.image = image  # 使用已经解码的图像
-        body_analyzer.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        
-        # 运行量感分析
-        face_volume_analyzer = FaceVolumeAnalyzer(image, user_height, lip_curve, nose_curve, eye_curve, face_curve, ratio_1, ratio_5)
-        volume_result = face_volume_analyzer.analyze()
-
-        #修改
         try:
-            three_d_model = PoseSegmentationVisualizer(image, model_path="selfie_segmenter.tflite")
-            three_d_model.process_and_visualize()
+            pose_results = body_analyzer.analyze()
+            has_pose = True
+        except ValueError as e:
+            # 如果姿态检测失败，返回原始图像和友好的错误提示
+            print(f"人体姿态检测失败: {str(e)}")
+            
+            # 将原始图像转换为base64
+            original_image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            success, buffer = cv2.imencode('.png', cv2.cvtColor(original_image_rgb, cv2.COLOR_RGB2BGR))
+            original_image_base64 = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+            
+            # 返回特殊标记的结果，指示需要重新拍照
+            result = {
+                "pose_detection_failed": True,
+                "error_message": "人体检测失败，无法识别人体关键点。请重新拍照，确保完整的身体在图像中，且光线充足，背景简洁。",
+                "processed_body_image": original_image_base64,
+            }
+            
+            return jsonify(result), 200
+            
+        # 创建基础骨骼图像作为备用
+        backup_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # 绘制骨骼点和连线
+        mp_drawing = mp.solutions.drawing_utils
+        mp_pose = mp.solutions.pose
+        with mp_pose.Pose(static_image_mode=True) as pose:
+            results = pose.process(backup_image)
+            if results.pose_landmarks:
+                mp_drawing.draw_landmarks(
+                    backup_image, 
+                    results.pose_landmarks, 
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+                    mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2)
+                )
+                
+        # 将备用图像转换为base64
+        success, buffer = cv2.imencode('.png', cv2.cvtColor(backup_image, cv2.COLOR_RGB2BGR))
+        backup_image_base64 = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        
+        # 尝试进行完整的体型分析
+        try:
+            model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "MODNet/pretrained/modnet_photographic_portrait_matting.ckpt")
+            three_d_model = PoseSegmentationVisualizer(image, model_path=model_path)
+            analysis_result = three_d_model.process_and_visualize()
+            processed_image = analysis_result.get("processed_body_image")
+            
+            # 检查轮廓分析是否成功
+            if not processed_image or three_d_model.bodytype == "Unknown":
+                raise ValueError("轮廓分析失败")
+                
+            # 添加面部量感分析
+            face_volume_analyzer = FaceVolumeAnalyzer(
+                image,
+                user_height,
+                lip_curve,
+                nose_curve,
+                eye_curve,
+                face_curve,
+                ratio_1,
+                ratio_5
+            )
+            volume_result = face_volume_analyzer.analyze()
+                
+            # 成功完成分析
+            result = {
+                "body_shape": body_analyzer.result,
+                "body_detailed_info": {
+                    "头肩比": body_analyzer.result.get('头肩比', '未知'),
+                    "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
+                    "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
+                    "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),            
+                },
+                "three_d_model": three_d_model.result,
+                "three_d_model_info": {
+                    "三围比例": three_d_model.result.get('身材比例(肩：腰：臀)', '未知'),
+                    "身材类型": three_d_model.result.get('身材类型', '未知'),
+                    "腿型": three_d_model.result.get('腿型', '未知'),
+                },
+                "face_volume_info": {
+                    "量感分析": volume_result.get('量感分析', '未知'),
+                    "脸大脸小": volume_result.get('脸大脸小', '未知'),
+                    "面部留白": volume_result.get('面部留白', '未知'),
+                    "综合曲直": volume_result.get('综合曲直', '未知'),
+                    "推荐风格": volume_result.get('推荐风格', '未知'),
+                    "Face_style": volume_result.get('Face_style', 'Elegant'),
+                    "Final_Curve_Straight": volume_result.get('Final_Curve_Straight', 'Natural'),
+                },
+                "processed_body_image": processed_image,
+                "body_type": three_d_model.result.get('body_type', '未知'),
+                "leg_type": three_d_model.result.get('leg_type', '未知'),
+            }
+            
         except Exception as e:
-            return jsonify({"error": f"3D Model visualization error: {str(e)}"}), 400
-
-        result = {
-            "body_shape": body_analyzer.result,
-             "body_detailed_info": {
-                "头肩比": body_analyzer.result.get('头肩比', '未知'),
-                "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
-                "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
-                "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),            
-            },
-            "three_d_model": three_d_model.result,
-            "three_d_model_info": {
-                "三围比例": three_d_model.result.get('身材比例(肩：腰：臀)', '未知'),
-                "身材类型": three_d_model.result.get('身材类型', '未知'),
-                "腿型": three_d_model.result.get('腿型', '未知'),
-            },            
-            "face_volume_analysis": volume_result,
-            "face_volume_info": {
-                "量感分析": volume_result.get('量感分析', '未知'),
-                "脸大脸小": volume_result.get('脸大脸小', '未知'),
-                "面部留白": volume_result.get('面部留白', '未知'),
-                "综合曲直": volume_result.get('综合曲直', '未知'),
-                "推荐风格": volume_result.get('推荐风格', '未知'),
-            },
-            "Face_style": volume_result.get('Face_style', '未知'),  
-            "body_style": volume_result.get('Final_Curve_Straight', '未知'), #"Straight",
-            "body_type": three_d_model.result.get('body_type', '未知'), #"A",
-            "leg_type": three_d_model.result.get('leg_type', '未知'), #"O-leg",
-            "processed_body_image": three_d_model.result.get('processed_body_image', '未知'),
-        }
-
-                # 添加以下打印语句
-        print("----------------------------------------")
-        print("Face_style:", volume_result.get('Face_style', '未知'))
-        print("body_style:", volume_result.get('Final_Curve_Straight', '未知'))
-        print("body_type:", three_d_model.result.get('body_type', '未知'))
-        print("leg_type:", three_d_model.result.get('leg_type', '未知'))
-        print("----------------------------------------")
-
-
-        # print(result)
-
+            # 如果轮廓分析失败，返回基本信息、备用图像和默认值
+            print(f"轮廓分析失败: {str(e)}")
+            
+            # 设置默认的三维模型结果 - 使用代码中定义的实际类型
+            default_three_d_model = {
+                "身材比例(肩：腰：臀)": "1 : 0.8 : 1",
+                "身材类型": "X型",  # 使用实际存在的身材类型
+                "腿型": "正常腿型",  # 使用实际存在的腿型
+                "body_type": "X",  # X型对应的英文标识
+                "leg_type": "Normal-leg",  # 正常腿型对应的英文标识
+            }
+            
+            # 尝试进行面部量感分析，如果失败则使用默认值
+            try:
+                face_volume_analyzer = FaceVolumeAnalyzer(
+                    image,
+                    user_height,
+                    lip_curve,
+                    nose_curve,
+                    eye_curve,
+                    face_curve,
+                    ratio_1,
+                    ratio_5
+                )
+                volume_result = face_volume_analyzer.analyze()
+            except Exception as ve:
+                print(f"面部量感分析失败: {str(ve)}")
+                volume_result = {
+                    "量感分析": "中量感",
+                    "脸大脸小": "正常大小",
+                    "面部留白": "面部留白适中",
+                    "综合曲直": "适中",
+                    "推荐风格": "优雅自然",
+                    "Face_style": "Elegant",
+                    "Final_Curve_Straight": "Natural",
+                }
+            
+            result = {
+                "body_shape": body_analyzer.result,
+                "body_detailed_info": {
+                    "头肩比": body_analyzer.result.get('头肩比', '未知'),
+                    "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
+                    "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
+                    "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),
+                },
+                "three_d_model": default_three_d_model,
+                "three_d_model_info": {
+                    "三围比例": default_three_d_model.get('身材比例(肩：腰：臀)', '1 : 0.8 : 1'),
+                    "身材类型": default_three_d_model.get('身材类型', 'X型'),
+                    "腿型": default_three_d_model.get('腿型', '正常腿型'),
+                },
+                "face_volume_info": {
+                    "量感分析": volume_result.get('量感分析', '中量感'),
+                    "脸大脸小": volume_result.get('脸大脸小', '正常大小'),
+                    "面部留白": volume_result.get('面部留白', '面部留白适中'),
+                    "综合曲直": volume_result.get('综合曲直', '适中'),
+                    "推荐风格": volume_result.get('推荐风格', '优雅自然'),
+                    "Face_style": volume_result.get('Face_style', 'Elegant'),
+                    "Final_Curve_Straight": volume_result.get('Final_Curve_Straight', 'Natural'),
+                },
+                "warning": "轮廓分析失败，返回基本身体比例信息和默认体型数据。可能是因为衣服与背景颜色相似，请尝试穿着与背景颜色对比明显的衣服重新拍摄。",
+                "processed_body_image": backup_image_base64,
+                "body_type": default_three_d_model.get('body_type', 'X'),
+                "leg_type": default_three_d_model.get('leg_type', 'Normal-leg'),
+            }
+            
         return jsonify(result), 200
-
-        # return jsonify(result)
+        
     except Exception as err:
         tb_str = traceback.format_exc()
         return jsonify({"error": f"Exception while analyzing: {str(err)} - {tb_str}"}), 400
@@ -322,7 +427,7 @@ def face_analyze():
         face_curve = face_analyzer.result.get('脸型曲直', '未知') # 脸型曲直结果  
 
         # 提取五眼比例
-        five_eye_ratio_str = face_analyzer.result.get("五眼比例", "1 : 1 : 1 : 1 : 1")  # 避免数据丢失
+        five_eye_ratio_str = face_analyzer.result.get("五眼比例", "1 : 1 : 1 : 1 : 1")  # 避免数据丢失m
         five_eye_ratios = [float(x.strip()) for x in five_eye_ratio_str.split(":")]
 
         # 计算 ratio_1 和 ratio_5

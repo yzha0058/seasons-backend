@@ -16,7 +16,7 @@ class FaceAnalyzer:
 
         # 初始化YOLO模型（确保'yolov8n-face.pt'文件存在）
         self.yolo_model = YOLO('yolov8n-face.pt')
-
+        self.yolo_model.to('cpu')   
         # 人脸检测框初始化
         self.x_left = 0
         self.y_top = 0

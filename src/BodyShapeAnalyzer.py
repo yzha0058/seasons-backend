@@ -9,6 +9,11 @@ from mediapipe.tasks.python import vision
 import base64
 from io import BytesIO
 from PIL import Image
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+from MODNet.src.models.modnet import MODNet
 
 
 class PoseAnalyzer:
@@ -132,57 +137,143 @@ class PoseAnalyzer:
 
 #图像分割，提取轮廓
 class ImageSegmentationProcessor:
-    def __init__(self, image, model_path = 'selfie_segmenter.tflite'):
-         # Resolve the absolute path of the model
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of the current script
-        self.model_path = os.path.join(script_dir, model_path)  # Combine script directory with relative path
-        if not os.path.exists(self.model_path):
-            raise FileNotFoundError(f"Model file not found at {self.model_path}")
-
+    def __init__(self, image, model_path='MODNet/pretrained/modnet_photographic_portrait_matting.ckpt'):
         self.image = image
         self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        self.segmenter = None
-        self.output_image = None  # 新增类变量存储输出图像  三通道二值图
-        self.output_image_Grey = None # 单通道二值灰度
+        self.output_image = None
+        self.output_image_Grey = None
         self.contours = None
-
-        # Constants
-        self.BG_COLOR = (192, 192, 192)  # gray 定义背景的颜色
-        self.DEFAULT_MASK_COLOR = np.array([0, 0, 255])  # 默认蓝色遮罩
-        self.ALTERNATIVE_MASK_COLOR = np.array([255, 255, 0])  # 替代的黄色遮罩 如果是蓝色背景下
-        self.DESIRED_HEIGHT = 480   #输出图像的尺寸
-        self.DESIRED_WIDTH = 480
-
-    def initialize_segmenter(self):  # Initialize the image segmentation model
-        # print(f"Resolved model path: {self.model_path}")
+        self.matte = None
         
-        # Load the model into memory
-        try:
-            with open(self.model_path, "rb") as model_file:
-                model_buffer = model_file.read()
-        except FileNotFoundError as e:
-            print(f"Error: Model file not found at {self.model_path}")
-            raise e
+        # 使用绝对路径加载模型
+        base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # 获取项目根目录
+        self.model_path = os.path.join(base_dir, model_path)
         
-        # Create options using the model buffer
-        base_options = python.BaseOptions(model_asset_buffer=model_buffer)
-        options = vision.ImageSegmenterOptions(
-            base_options=base_options,
-            output_category_mask=True
-        )
-        # Create the segmenter
-        self.segmenter = vision.ImageSegmenter.create_from_options(options)
+        print(f"尝试加载模型: {self.model_path}")  # 添加日志帮助调试
+        
+        # 检查文件是否存在
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"模型文件不存在: {self.model_path}")
+        
+        # 初始化MODNet
+        self.modnet = MODNet(backbone_pretrained=False)
+        self.modnet = nn.DataParallel(self.modnet)
+        
+        # 加载预训练模型
+        if torch.cuda.is_available():
+            self.modnet.cuda()
+            weights = torch.load(self.model_path)
+        else:
+            weights = torch.load(self.model_path, map_location=torch.device('cpu'))
+        self.modnet.load_state_dict(weights)
+        self.modnet.eval()
+        
+        # 图像预处理转换
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
 
-    def check_background_color(self, image, mask):  
+    def process_image(self):
+        # 将图像转换为PIL格式
+        im = Image.fromarray(self.image_rgb)
+        
+        # 获取原始图像尺寸
+        im_h, im_w = self.image_rgb.shape[:2]
+        
+        # 计算调整后的尺寸（参考官方代码的尺寸调整逻辑）
+        ref_size = 512
+        if max(im_h, im_w) < ref_size or min(im_h, im_w) > ref_size:
+            if im_w >= im_h:
+                im_rh = ref_size
+                im_rw = int(im_w / im_h * ref_size)
+            elif im_w < im_h:
+                im_rw = ref_size
+                im_rh = int(im_h / im_w * ref_size)
+        else:
+            im_rh = im_h
+            im_rw = im_w
+        
+        # 确保尺寸是32的倍数（参考官方代码）
+        im_rw = im_rw - im_rw % 32
+        im_rh = im_rh - im_rh % 32
+        
+        # 调整图像大小
+        im = im.resize((im_rw, im_rh))
+        
+        # 预处理图像
+        im_tensor = self.transform(im)
+        im_tensor = torch.unsqueeze(im_tensor, 0)
+        
+        # 使用GPU如果可用
+        if torch.cuda.is_available():
+            im_tensor = im_tensor.cuda()
+        
+        # 进行推理
+        with torch.no_grad():
+            _, _, matte = self.modnet(im_tensor, True)
+        
+        # 将matte调整回原始图像大小
+        matte = F.interpolate(matte, size=(im_h, im_w), mode='area')
+        matte = matte[0][0].data.cpu().numpy()
+        
+        # 保存原始matte用于可能的后续处理
+        self.matte = matte
+        
+        # 创建二值mask（使用多个阈值获取更多细节）
+        masks = []
+        thresholds = [0.1, 0.3, 0.5]  # 多个阈值以捕获不同层次的细节
+        
+        for threshold in thresholds:
+            mask = (matte > threshold).astype(np.uint8) * 255
+            masks.append(mask)
+        
+        # 合并所有mask
+        combined_mask = np.zeros_like(masks[0])
+        for mask in masks:
+            combined_mask = cv2.bitwise_or(combined_mask, mask)
+        
+        # 使用形态学操作优化mask
+        kernel = np.ones((3,3), np.uint8)
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+        
+        # 查找轮廓
+        contours, hierarchy = cv2.findContours(combined_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # 创建输出图像
+        self.output_image = self.image_rgb.copy()
+        
+        # 按面积过滤和排序轮廓
+        valid_contours = []
+        for i, contour in enumerate(contours):
+            area = cv2.contourArea(contour)
+            if area > 100:  # 面积阈值可调
+                valid_contours.append((contour, area))
+        
+        # 按面积降序排序
+        valid_contours.sort(key=lambda x: x[1], reverse=True)
+        
+        # 绘制轮廓
+        colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]  # 不同层级使用不同颜色
+        for i, (contour, _) in enumerate(valid_contours):
+            color = colors[i % len(colors)]
+            cv2.drawContours(self.output_image, [contour], -1, color, 2)
+        
+        # 保存轮廓信息
+        self.contours = [cont for cont, _ in valid_contours]
+        
+        # 返回处理后的图像
+        return self.output_image
+    
+    def check_background_color(self, image, mask):
         """
         检查背景区域的主要颜色
-        注意要用RGB图像 我在类开始定义了BGR2RGB
         """
         # 获取背景区域
-        background_mask = ~mask   #遮罩取反
-        background_pixels = image[background_mask]   # 获取背景像素  background_mask是一个布尔数组 判断为True则属于背景
+        background_mask = ~mask
+        background_pixels = image[background_mask]
 
-        if len(background_pixels) == 0:  #这里raise 一个错误
+        if len(background_pixels) == 0:
             return False
 
         # 计算背景区域的平均颜色
@@ -191,26 +282,7 @@ class ImageSegmentationProcessor:
         # 判断蓝色是否为主要颜色
         is_bluish = (avg_color[2] > avg_color[0] * 1.2) and (avg_color[2] > avg_color[1] * 1.2)
 
-        """
-        在 OpenCV 中，图像的颜色通道顺序是 BGR(蓝、绿、红), 
-        avg_color[2] 代表红色通道的平均值, avg_color[1] 代表绿色通道的平均值, avg_color[0] 代表蓝色通道的平均值,
-        1.2说明蓝色像素比其他两个颜色都高出20%，也可以指定其他值。这样做适合简单背景的人物照片，如果后续有复杂任务，欢迎修改。
-        """
-
         return is_bluish
-
-    # def resize_and_show(self, image):
-    #     h, w = image.shape[:2]
-    #     if h < w:
-    #         img = cv2.resize(image, (self.DESIRED_WIDTH, math.floor(h / (w / self.DESIRED_WIDTH))))
-    #     else:
-    #         img = cv2.resize(image, (math.floor(w / (h / self.DESIRED_HEIGHT)), self.DESIRED_HEIGHT))
-        
-    #     # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    #     plt.imshow(img)
-    #     plt.axis('off')
-    #     plt.show()
-
         
     def print_contours(self, contours):
         for contour_index, contour in enumerate(contours):
@@ -218,70 +290,29 @@ class ImageSegmentationProcessor:
             for point in contour:
                 x, y = point[0]
                 print(f"({x}, {y})")
-
-    def process_image(self):
-        # 如果分割器未初始化，则初始化
-        if not self.segmenter: 
-            self.initialize_segmenter()
-        
-        # 创建MediaPipe图像
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
-        
-        #获取分割的结果并创建一个透明的遮罩
-        segmentation_result = self.segmenter.segment(mp_image)
-        category_mask = segmentation_result.category_mask      # 获取类别遮罩 是一个numpy数组，0代表人物 1代表背景
-
-        category_mask_array = category_mask.numpy_view()    # 将 category_mask 转换为 NumPy 数组   uint8 类型
-        # print(category_mask_array.dtype)
-
-        overlay = self.image_rgb.copy()  # 创建透明覆盖层
-        
-        alpha = 1 #透明度
-        
-        condition = category_mask_array <= 0.2  # 创建遮罩条件  置信度小于等于0.2 就是False代表人 
-        
-        _, binary_mask = cv2.threshold(category_mask_array, 127, 255, cv2.THRESH_BINARY)
-        binary_mask = binary_mask.astype(np.uint8) #二值化数组 0-255 其中0代表人 255代表背景
-        binary_mask = cv2.bitwise_not(binary_mask) #取反 方便findContours使用
-        
-        # plt.imshow(binary_mask, cmap='gray')  # 使用灰度色彩映射
-        # plt.axis('off')  # 关闭坐标轴
-        # plt.title("Binary Mask Visualization")  # 设置标题
-        # plt.show()  # 显示图像
-
-        self.contours, _ = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) #提取所有轮廓而不是外轮廓
-        # self.print_contours(self.contours) 打印轮廓坐标
-        
-        # 检查背景颜色
-        is_blue_background = self.check_background_color(self.image_rgb, ~condition)
-
-        # 根据背景颜色选择遮罩颜色
-        MASK_COLOR = self.ALTERNATIVE_MASK_COLOR if is_blue_background else self.DEFAULT_MASK_COLOR
-        
-        # 创建彩色遮罩
-        colored_mask = np.zeros_like(self.image_rgb)  #创建一个全0的图层 但是大小和image一致
-        colored_mask[condition] = MASK_COLOR
-        
-        # 使用cv2.addWeighted合并原图和遮罩
-        self.output_image = cv2.addWeighted(self.image_rgb, 1, colored_mask, alpha, 0)  # 保存到类变量
-        
-        # 在 output_image 上绘制轮廓
-        cv2.drawContours(self.output_image, self.contours, -1, (255, 255, 255), 2)  # 使用绿色绘制轮廓
-        
-        # 确保输出图像不为空
-        if self.output_image is None:
-            raise ValueError("Segmentation processing failed. No output image generated.")
+                
+    def show_combined_result(self):
+        """显示原图、前景和matte的组合结果"""
+        if self.matte is None:
+            print("请先运行process_image()获取matte")
+            return
             
+        w, h = self.image_rgb.shape[1], self.image_rgb.shape[0]
+        rw, rh = 800, int(h * 800 / (3 * w))
         
-        # 打印使用了哪种颜色的遮罩
-        color_used = "黄色" if is_blue_background else "蓝色"
-        print(f'使用了{color_used}遮罩，因为背景{"是" if is_blue_background else "不是"}蓝色的') 
-
-        # 显示结果
-        # self.resize_and_show(self.output_image)
-
-        # 返回处理后的图像
-        return self.output_image
+        # 获取前景
+        matte_3channel = np.repeat(self.matte[:, :, None], 3, axis=2)
+        foreground = self.image_rgb * matte_3channel + np.full(self.image_rgb.shape, 255) * (1 - matte_3channel)
+        
+        # 组合显示
+        combined = np.concatenate((self.image_rgb, foreground, matte_3channel * 255), axis=1)
+        combined = Image.fromarray(np.uint8(combined)).resize((rw, rh))
+        
+        plt.figure(figsize=(15, 5))
+        plt.imshow(combined)
+        plt.axis('off')
+        plt.title("Original - Foreground - Matte")
+        plt.show()
     
 class PoseSegmentationVisualizer:
     def __init__(self, image, model_path):
@@ -669,15 +700,17 @@ class PoseSegmentationVisualizer:
         return self.result
     
     def visualize_pose(self, image, landmarks):
-        """ 可视化身体关键点连线 (不绘制轮廓交点，仅绘制 MediaPipe Pose 关键点) """
+        """ 可视化身体关键点连线、轮廓线和轮廓点 """
         print("🚩 visualize_pose() 开始执行")
         try:
             overlay = image.copy()
             alpha = 0.6  # 透明度
 
             # **颜色定义**
-            line_color = (0, 255, 0)  # 绿色
-            point_color = (0, 0, 255)  # 红色
+            line_color = (0, 255, 0)  # 绿色 - 骨骼连线
+            point_color = (0, 0, 255)  # 红色 - 关键点
+            contour_color = (255, 0, 0)  # 蓝色 - 轮廓线
+            contour_point_color = (255, 255, 0)  # 黄色 - 轮廓点
             thickness = 2
 
             height, width = image.shape[:2]
@@ -705,6 +738,76 @@ class PoseSegmentationVisualizer:
             for i in range(11, 33):
                 x, y = int(landmarks[i].x * width), int(landmarks[i].y * height)
                 cv2.circle(overlay, (x, y), 4, point_color, -1)
+                cv2.putText(overlay, str(i), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, point_color, 1)
+
+            # **绘制人体轮廓线**
+            contours = self.segmentation_processor.contours
+            cv2.drawContours(overlay, contours, -1, contour_color, 2)
+            
+            # **绘制特定关键点的轮廓交点连线**
+            midpoints = {
+                "shoulder_mid": self.calculate_midpoint(landmarks[11], landmarks[12]),
+                "chest_mid": None,
+                "waist_mid": None,
+                "hip_mid": self.calculate_midpoint(landmarks[23], landmarks[24])
+            }
+            
+            # 计算胸部和腰部的中点
+            if midpoints["shoulder_mid"] and midpoints["hip_mid"]:
+                midpoints["chest_mid"], midpoints["waist_mid"] = self.calculate_chest_waist_midpoints(
+                    midpoints["shoulder_mid"], midpoints["hip_mid"]
+                )
+                
+            # 绘制中点和轮廓交点连线
+            for key, midpoint in midpoints.items():
+                if midpoint:
+                    # 绘制中点
+                    x = int(midpoint['x'] * width)
+                    y = int(midpoint['y'] * height)
+                    cv2.circle(overlay, (x, y), 6, (255, 0, 255), -1)  # 紫色中点
+                    
+                    # 查找轮廓交点并绘制
+                    intersections, _ = self.find_nearest_intersections(midpoint, contours)
+                    if intersections and len(intersections) == 2:
+                        pt1 = (int(intersections[0][0] * width), int(intersections[0][1] * height))
+                        pt2 = (int(intersections[1][0] * width), int(intersections[1][1] * height))
+                        cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                        
+                        # 绘制交点
+                        cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                        cv2.circle(overlay, pt2, 5, contour_point_color, -1)
+
+            # **绘制腿部轮廓交点连线**
+            leg_point_pairs = [(25, 26), (27, 28)]  # 膝盖对、脚踝对
+            for p1, p2 in leg_point_pairs:
+                filtered_intersections, _ = self.calculate_intersections(p1, p2, contours, overlay, landmarks)
+                if filtered_intersections and len(filtered_intersections) >= 2:
+                    pt1 = (int(filtered_intersections[0][0] * width), int(filtered_intersections[0][1] * height))
+                    pt2 = (int(filtered_intersections[1][0] * width), int(filtered_intersections[1][1] * height))
+                    cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                    cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                    cv2.circle(overlay, pt2, 5, contour_point_color, -1)
+                    
+            # 计算小腿中间点并绘制轮廓交点
+            right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28])
+            left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
+            
+            # 绘制小腿中点
+            x1 = int(right_leg_calf['x'] * width)
+            y1 = int(right_leg_calf['y'] * height)
+            x2 = int(left_leg_calf['x'] * width)
+            y2 = int(left_leg_calf['y'] * height)
+            cv2.circle(overlay, (x1, y1), 6, (255, 0, 255), -1)
+            cv2.circle(overlay, (x2, y2), 6, (255, 0, 255), -1)
+            
+            # 计算小腿交点并绘制
+            filtered_intersections, _ = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, overlay)
+            if filtered_intersections and len(filtered_intersections) >= 2:
+                pt1 = (int(filtered_intersections[0][0] * width), int(filtered_intersections[0][1] * height))
+                pt2 = (int(filtered_intersections[1][0] * width), int(filtered_intersections[1][1] * height))
+                cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                cv2.circle(overlay, pt2, 5, contour_point_color, -1)
 
             # **融合透明层**
             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
@@ -794,66 +897,60 @@ class PoseSegmentationVisualizer:
 
 
 if __name__ == "__main__":
-    # 测试图片路径（替换成你真实的图片路径）
-    image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
-    model_path = "selfie_segmenter.tflite"  # 替换成你的实际模型路径（如果需要）
-
-    # 读取图片
-    image = cv2.imread(image_path)
-    if image is None:
-        raise FileNotFoundError(f"无法找到图片 {image_path}")
-
-    # **实例化 PoseAnalyzer 并分析 body_ratio**
-    pose_analyzer = PoseAnalyzer(image)
-    pose_results = pose_analyzer.analyze()
-    
-    # 获取 body_ratio
-    body_ratio = pose_results.get("上下半身比例", "N/A")
-    print(f"📏 计算出的 body_ratio: {body_ratio}")
-
-    # 获取 scbl
-    scbl = pose_results.get("身材比例判断", "N/A")
-    print(f"📏 计算出的 scbl: {scbl}")
-
-    # **实例化 PoseSegmentationVisualizer 并执行分析**
-    visualizer = PoseSegmentationVisualizer(image, model_path)
-    result = visualizer.process_and_visualize()
-
-    # 输出结果信息
-    print("🚩 分析结果：")
-    for key, value in result.items():
-        if key != "processed_body_image":
-            print(f"{key}: {value}")
-
-    # 解码 base64 图像数据并显示出来（验证图片结果）
-    base64_image = result.get("processed_body_image", None)
-    if base64_image:
-        header, encoded = base64_image.split(",", 1)
-        image_bytes = base64.b64decode(encoded)
-        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
-        result_image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-
-        # **确保图片适应窗口**
-        screen_res = 1280, 720  # 设置合适的屏幕分辨率
-        scale_width = screen_res[0] / result_image.shape[1]
-        scale_height = screen_res[1] / result_image.shape[0]
-        scale = min(scale_width, scale_height)  # 计算缩放比例
-        new_width = int(result_image.shape[1] * scale)
-        new_height = int(result_image.shape[0] * scale)
-        resized_image = cv2.resize(result_image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-
-        # **设置 OpenCV 窗口可调整大小**
-        cv2.namedWindow("Processed Body Image", cv2.WINDOW_NORMAL)
-        cv2.imshow("Processed Body Image", resized_image)
-        print("🔍 关闭窗口请按任意键...")
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-        # **保存图片**
-        save_path = "processed_body_image.png"
-        cv2.imwrite(save_path, result_image)
-        print(f"✅ 处理后的图片已保存: {save_path}")
-    else:
-        print("⚠️ 没有可视化图片数据！")
+    try:
+        # 获取项目根目录
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 设置图片路径
+        image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Seasons_1_body.jpg")
+        print(f"尝试读取图片路径: {image_path}")
+        
+        # 确保图片路径存在
+        if not os.path.exists(image_path):
+            print(f"错误：图片路径不存在 {image_path}")
+            # 尝试使用绝对路径
+            image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"无法找到图片，请检查路径")
+        
+        # 设置模型路径
+        model_path = os.path.join(parent_dir, "MODNet", "pretrained", "modnet_photographic_portrait_matting.ckpt")
+        print(f"尝试读取模型路径: {model_path}")
+        
+        # 检查文件是否存在
+        if not os.path.exists(model_path):
+            print(f"⚠️ 模型路径不存在")
+            # 尝试其他可能的路径
+            model_path = r"f:\YZHA0058\seasons-backend\MODNet\pretrained\modnet_photographic_portrait_matting.ckpt"
+            print(f"尝试使用绝对路径: {model_path}")
+            
+        # 读取图片
+        image = cv2.imread(image_path)
+        if image is None:
+            raise FileNotFoundError(f"无法读取图片: {image_path}")
+            
+        # 实例化并分析
+        pose_analyzer = PoseAnalyzer(image)
+        pose_results = pose_analyzer.analyze()
+        
+        # 获取结果
+        body_ratio = pose_results.get("上下半身比例", "N/A")
+        print(f"📏 计算出的 body_ratio: {body_ratio}")
+        
+        # 处理图像分割
+        three_d_model = PoseSegmentationVisualizer(image, model_path=model_path)
+        result = three_d_model.process_and_visualize()
+        
+        # 显示图片
+        base64_image = result.get("processed_body_image", None)
+        if base64_image:
+            # 处理图像显示...
+            print("✅ 图像处理成功")
+        else:
+            print("⚠️ 没有可视化图片数据！")
+    except Exception as e:
+        import traceback
+        print(f"程序运行错误: {str(e)}")
+        traceback.print_exc()
     
     

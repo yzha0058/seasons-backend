@@ -178,8 +178,12 @@ class LipShapeAnalyzer:
 
         # 输出详细信息
         self.result["唇部数据"] = f"{self.judge_round_wide_lip()[1]}, {self.judge_thin_thick_lip()[1]}, {self.judge_m_lip()[1]}"
-        self.result["嘴角"] = f"{self.judge_mouth_orientation()[1]}, 右嘴角倾斜度:{self.right_angle:.2f}°, 左嘴角倾斜度:{self.left_angle:.2f}°"
-    
+        orientation_desc = self.judge_mouth_orientation()[1]
+        self.result["嘴角"] = f"{orientation_desc}, 右嘴角倾斜度{self.right_angle:.2f}°, 左嘴角倾斜度{self.left_angle:.2f}°"
+        self.result["嘴角状态"] = orientation_desc
+        self.result["右嘴角倾斜度"] = f"{self.right_angle:.2f}°"
+        self.result["左嘴角倾斜度"] = f"{self.left_angle:.2f}°" 
+        
         # 调用新增方法判断上下唇厚度属性
         upper_desc, lower_desc = self.judge_upper_lower_lip_thickness()
         print(f"上唇：{upper_desc}, 下唇：{lower_desc}")

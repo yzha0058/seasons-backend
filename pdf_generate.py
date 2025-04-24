@@ -219,7 +219,7 @@ def generate_pdf(face_info, body_info, face_image, body_image):
     pdf.setFillColorRGB(0, 0, 0)
     eye_result_y = eye_section_y - 38
     
-    eye_shape = face_info["eye_shape"]
+    eye_shape = face_info["eye_detailed_info"]
     
     # 右眼分析
     pdf.drawString(right_column_x, eye_result_y, f"• 右眼曲直: {eye_shape.get('右眼曲直', '')}")
@@ -333,8 +333,9 @@ def generate_pdf(face_info, body_info, face_image, body_image):
     # 唇部详细信息项
     lip_data = [
         f"• 上下唇比例: {lips_info.get('上下唇比例', '')}",
-        f"• 嘴角: {lips_info.get('嘴角', '')}",
-        f"• 左嘴角倾斜度: {lips_info.get('左嘴角倾斜度', '')}",
+        # f"• 嘴角: {lips_info.get('嘴角', '')}",
+        f"• 嘴角状态: {lips_info.get('嘴角状态', '')}",
+
         f"• 唇部数据: {lips_info.get('唇部数据', '')}",
         f"• 上唇: {lips_info.get('上唇', '')}",
         f"• 下唇: {lips_info.get('下唇', '')}"
@@ -352,7 +353,9 @@ def generate_pdf(face_info, body_info, face_image, body_image):
     # 唇型分析项
     lip_results = [
         f"• 唇部数据: {lips_info.get('唇部数据', '')}",
-        f"• 曲直结果: {lips_info.get('曲直结果', '')}"
+        f"• 曲直结果: {lips_info.get('曲直结果', '')}",
+        f"• 右嘴角倾斜度: {lips_info.get('右嘴角倾斜度', '')}",
+        f"• 左嘴角倾斜度: {lips_info.get('左嘴角倾斜度', '')}",
     ]
     
     for item in lip_results:
@@ -397,8 +400,8 @@ def generate_pdf(face_info, body_info, face_image, body_image):
         data_y -= 27
     
     # 添加蓝色身材结论
-    pdf.setFont("NotoSans-Bold", 15)
-    pdf.setFillColorRGB(0.2, 0.6, 0.8)
+    pdf.setFont("NotoSans-Regular", 15)
+    pdf.setFillColorRGB(0, 0, 0)
     pdf.drawString(right_column_x, data_y, f"• 身材比例判断: {body_detailed_info.get('身材比例判断', '')}")
     data_y -= 50
     

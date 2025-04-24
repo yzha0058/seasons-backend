@@ -458,7 +458,9 @@ def face_analyze():
             "Lips_detailed_info": {
                 "上下唇比例": lip_analyzer.result.get('上下唇比例', '未知'),
                 "嘴角": lip_analyzer.result.get('嘴角', '未知'),
-                "左嘴角倾斜度": "测量结果",
+                "嘴角状态": lip_analyzer.result.get('嘴角状态', '未知'),
+                "右嘴角倾斜度": lip_analyzer.result.get('右嘴角倾斜度', '未知'),
+                "左嘴角倾斜度": lip_analyzer.result.get('左嘴角倾斜度', '未知'),
                 "唇部数据": lip_analyzer.result.get('唇部数据', '未知'),
                 "上唇": lip_analyzer.result.get('上唇', '未知'),
                 "下唇": lip_analyzer.result.get('下唇', '未知'),

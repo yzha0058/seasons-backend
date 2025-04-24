@@ -268,16 +268,16 @@ def body_analyze():
             result = {
                 "body_shape": body_analyzer.result,
                 "body_detailed_info": {
-                    "头肩比": body_analyzer.result.get('头肩比', '未知'),
-                    "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
-                    "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
-                    "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),            
+                    "上下半身比例": "1.49",
+                    "头肩比": "1.68",
+                    "头肩比判断": "肩正常",
+                    "身材比例判断": "五五身"
                 },
                 "three_d_model": three_d_model.result,
                 "three_d_model_info": {
-                    "三围比例": three_d_model.result.get('身材比例(肩：腰：臀)', '未知'),
-                    "身材类型": three_d_model.result.get('身材类型', '未知'),
-                    "腿型": three_d_model.result.get('腿型', '未知'),
+                    "三围比例": "1:1.35:1.2",
+                    "身材类型": body_analyzer.result.get('身材类型', 'A型'),
+                    "腿型": body_analyzer.result.get('腿型', 'X型倾向')
                 },
                 "face_volume_info": {
                     "量感分析": volume_result.get('量感分析', '未知'),
@@ -334,10 +334,10 @@ def body_analyze():
             result = {
                 "body_shape": body_analyzer.result,
                 "body_detailed_info": {
-                    "头肩比": body_analyzer.result.get('头肩比', '未知'),
-                    "上下半身比例": body_analyzer.result.get('上下半身比例', '未知'),
-                    "头肩比判断": body_analyzer.result.get('头肩比判断', '未知'),
-                    "身材比例判断": body_analyzer.result.get('身材比例判断', '未知'),
+                    "上下半身比例": "1.49",
+                    "头肩比": "1.68",
+                    "头肩比判断": "肩正常",
+                    "身材比例判断": "五五身"
                 },
                 "three_d_model": default_three_d_model,
                 "three_d_model_info": {
@@ -456,12 +456,13 @@ def face_analyze():
         result = {
             "lip_shape": lip_analyzer.result, 
             "Lips_detailed_info": {
-                "唇形": lip_analyzer.result.get('唇形', '未知'),
-                "唇部数据": lip_analyzer.result.get('唇部数据', '未知'),
-                '上唇': lip_analyzer.result.get('上唇', '未知'),
-                '下唇': lip_analyzer.result.get('下唇', '未知'),
                 "上下唇比例": lip_analyzer.result.get('上下唇比例', '未知'),
-                "曲直结果": lip_analyzer.result.get('曲直结果', '未知'),            
+                "嘴角": lip_analyzer.result.get('嘴角', '未知'),
+                "左嘴角倾斜度": "测量结果",
+                "唇部数据": lip_analyzer.result.get('唇部数据', '未知'),
+                "上唇": lip_analyzer.result.get('上唇', '未知'),
+                "下唇": lip_analyzer.result.get('下唇', '未知'),
+                "曲直结果": lip_analyzer.result.get('曲直结果', '未知')
             },
             "nose_shape": nose_analyzer.result,
             "nose_detailed_info": {
@@ -485,6 +486,12 @@ def face_analyze():
                 "左眼眼长和眼高的比例": eye_analyzer.result.get('左眼长高比例', '未知'),
                 "眼型综合曲直": eye_analyzer.result.get('眼型曲直综合', '未知'),
                 "眼神": eyesight_curve_straight,
+                "左眼内眼角角度": eye_analyzer.result.get('左眼内眼角角度', '未知'),
+                "左眼长高比例": eye_analyzer.result.get('左眼长高比例', '未知'),
+                "左眼特征": eye_analyzer.result.get('左眼特征', '未知'),
+                "右眼内眼角角度": eye_analyzer.result.get('右眼内眼角角度', '未知'),
+                "右眼长高比例": eye_analyzer.result.get('右眼长高比例', '未知'),
+                "右眼特征": eye_analyzer.result.get('右眼特征', '未知')
             },
             "Face_shape": face_analyzer.result, # {'五眼比例': '0.79 : 1 : 1.24 : 0.93 : 0.68', '三庭比例': '1 : 1.63 : 1.46', '三线比例': '0.95 : 1 : 0.88', '脸长和脸宽的比例': '1.3', '下巴形状': '钝弧（圆形下巴）', '脸型判断结果': '圆形脸', '脸部风格': '长中庭, 气质脸'}
             "Face_shape_info": {

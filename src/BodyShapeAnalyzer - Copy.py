@@ -1,0 +1,956 @@
+import cv2
+import mediapipe as mp
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+import os
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import base64
+from io import BytesIO
+from PIL import Image
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+from MODNet.src.models.modnet import MODNet
+
+
+class PoseAnalyzer:
+    def __init__(self, image):
+        self.image = image
+        # self.image = cv2.imread(image_path)
+        self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(static_image_mode=True, model_complexity=2, enable_segmentation=False)
+        self.landmarks = None
+        self.result = {}
+        self.midpoints = {}
+
+    def process_image(self):
+        results = self.pose.process(self.image_rgb)
+        if results.pose_landmarks:
+            self.landmarks = results.pose_landmarks.landmark
+            return results
+        else:
+            raise ValueError("No pose landmarks detected.")
+
+    def get_point(self, landmark):
+        return landmark.x, landmark.y
+
+    def calculate_distances(self):
+        point4 = self.get_point(self.landmarks[4])
+        point10 = self.get_point(self.landmarks[10])
+        dist_4_10 = np.linalg.norm(np.array(point4) - np.array(point10))
+
+        point1 = self.get_point(self.landmarks[1])
+        point9 = self.get_point(self.landmarks[9])
+        dist_1_9 = np.linalg.norm(np.array(point1) - np.array(point9))
+
+        head_height = max(dist_4_10, dist_1_9) * 2
+
+        left_shoulder = self.get_point(self.landmarks[11])
+        right_shoulder = self.get_point(self.landmarks[12])
+        shoulder_width = np.linalg.norm(np.array(left_shoulder) - np.array(right_shoulder))
+
+        shoulder_ratio = shoulder_width / head_height
+        return head_height, shoulder_width, shoulder_ratio
+
+    def calculate_body_proportions(self, head_height):
+        left_shoulder = self.get_point(self.landmarks[11])
+        right_shoulder = self.get_point(self.landmarks[12])
+        mid_shoulder = ((left_shoulder[0] + right_shoulder[0]) / 2, (left_shoulder[1] + right_shoulder[1]) / 2)
+
+        left_hip = self.get_point(self.landmarks[23])
+        right_hip = self.get_point(self.landmarks[24])
+        mid_hip = ((left_hip[0] + right_hip[0]) / 2, (left_hip[1] + right_hip[1]) / 2)
+
+        upper_body_length = np.linalg.norm(np.array(mid_shoulder) - np.array(mid_hip))
+
+        left_ankle = self.get_point(self.landmarks[28])
+        right_ankle = self.get_point(self.landmarks[29])
+        mid_ankle = ((left_ankle[0] + right_ankle[0]) / 2, (left_ankle[1] + right_ankle[1]) / 2)
+
+        lower_body_length = np.linalg.norm(np.array(mid_hip) - np.array(mid_ankle))
+
+        upper_body_ratio = upper_body_length / head_height
+        lower_body_ratio = lower_body_length / head_height
+        body_ratio = lower_body_ratio / upper_body_ratio
+        print("体型比例为:", body_ratio)
+        self.result['body_ratio'] = f"{body_ratio:.2f}"
+        return upper_body_ratio, lower_body_ratio, body_ratio
+
+    def analyze_proportions(self, body_ratio):
+        if body_ratio > 1:
+            if 1 <= body_ratio <= 2:
+                return "五五身"
+            elif 2 <= body_ratio <= 2.1:
+                return "四六身（显高）"
+            elif body_ratio > 2.1:
+                return "三七身（黄金比例）"
+        else:
+            return "六四分（显矮）"
+
+    def analyze(self):
+        results = self.process_image()
+        if not results.pose_landmarks:
+            raise ValueError("⚠️ No pose landmarks detected. 请确保图片包含完整的身体。")
+        self.landmarks = results.pose_landmarks.landmark  # 确保 landmarks 赋值
+        annotated_image = self.image.copy()
+        mp.solutions.drawing_utils.draw_landmarks(
+            annotated_image,
+            results.pose_landmarks,
+            self.mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style()
+        )
+
+        head_height, shoulder_width, shoulder_ratio = self.calculate_distances()
+        if shoulder_ratio < 1.5:
+            shoulder_type = "肩偏窄"
+        elif shoulder_ratio > 1.7:
+            shoulder_type = "肩偏宽"
+        else:
+            shoulder_type = "肩正常"
+
+        upper_body_ratio, lower_body_ratio, body_ratio = self.calculate_body_proportions(head_height)
+        proportion_type = self.analyze_proportions(body_ratio)
+
+        # 输出结果
+        # print(f"头肩比（标准化肩宽）：{shoulder_ratio:.2f}")
+        # print(f"头肩比判断：{shoulder_type}")
+        # print(f"上半身长度（标准化）：{upper_body_ratio:.2f}")
+        # print(f"下半身长度（标准化）：{lower_body_ratio:.2f}")
+        # print(f"上下半身比例：{body_ratio:.2f}")
+        # print(f"比例判断：{proportion_type}")
+        self.result['头肩比'] = f"{shoulder_ratio:.2f}"
+        self.result['头肩比判断'] = f"{shoulder_type}"
+        self.result['上半身长度'] = f"{upper_body_ratio:.2f}"
+        self.result['下半身长度'] = f"{lower_body_ratio:.2f}"
+        self.result['上下半身比例'] = f"{body_ratio:.2f}"
+        self.result['身材比例判断'] = f"{proportion_type}"
+        
+        return self.result
+        
+        
+    def close(self):
+        self.pose.close()
+
+#图像分割，提取轮廓
+class ImageSegmentationProcessor:
+    def __init__(self, image, model_path='MODNet/pretrained/modnet_photographic_portrait_matting.ckpt'):
+        self.image = image
+        self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        self.output_image = None
+        self.output_image_Grey = None
+        self.contours = None
+        self.matte = None
+        
+        # 使用绝对路径加载模型
+        base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # 获取项目根目录
+        self.model_path = os.path.join(base_dir, model_path)
+        
+        print(f"尝试加载模型: {self.model_path}")  # 添加日志帮助调试
+        
+        # 检查文件是否存在
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"模型文件不存在: {self.model_path}")
+        
+        # 初始化MODNet
+        self.modnet = MODNet(backbone_pretrained=False)
+        self.modnet = nn.DataParallel(self.modnet)
+        
+        # 加载预训练模型
+        if torch.cuda.is_available():
+            self.modnet.cuda()
+            weights = torch.load(self.model_path)
+        else:
+            weights = torch.load(self.model_path, map_location=torch.device('cpu'))
+        self.modnet.load_state_dict(weights)
+        self.modnet.eval()
+        
+        # 图像预处理转换
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+
+    def process_image(self):
+        # 将图像转换为PIL格式
+        im = Image.fromarray(self.image_rgb)
+        
+        # 获取原始图像尺寸
+        im_h, im_w = self.image_rgb.shape[:2]
+        
+        # 计算调整后的尺寸（参考官方代码的尺寸调整逻辑）
+        ref_size = 512
+        if max(im_h, im_w) < ref_size or min(im_h, im_w) > ref_size:
+            if im_w >= im_h:
+                im_rh = ref_size
+                im_rw = int(im_w / im_h * ref_size)
+            elif im_w < im_h:
+                im_rw = ref_size
+                im_rh = int(im_h / im_w * ref_size)
+        else:
+            im_rh = im_h
+            im_rw = im_w
+        
+        # 确保尺寸是32的倍数（参考官方代码）
+        im_rw = im_rw - im_rw % 32
+        im_rh = im_rh - im_rh % 32
+        
+        # 调整图像大小
+        im = im.resize((im_rw, im_rh))
+        
+        # 预处理图像
+        im_tensor = self.transform(im)
+        im_tensor = torch.unsqueeze(im_tensor, 0)
+        
+        # 使用GPU如果可用
+        if torch.cuda.is_available():
+            im_tensor = im_tensor.cuda()
+        
+        # 进行推理
+        with torch.no_grad():
+            _, _, matte = self.modnet(im_tensor, True)
+        
+        # 将matte调整回原始图像大小
+        matte = F.interpolate(matte, size=(im_h, im_w), mode='area')
+        matte = matte[0][0].data.cpu().numpy()
+        
+        # 保存原始matte用于可能的后续处理
+        self.matte = matte
+        
+        # 创建二值mask（使用多个阈值获取更多细节）
+        masks = []
+        thresholds = [0.1, 0.3, 0.5]  # 多个阈值以捕获不同层次的细节
+        
+        for threshold in thresholds:
+            mask = (matte > threshold).astype(np.uint8) * 255
+            masks.append(mask)
+        
+        # 合并所有mask
+        combined_mask = np.zeros_like(masks[0])
+        for mask in masks:
+            combined_mask = cv2.bitwise_or(combined_mask, mask)
+        
+        # 使用形态学操作优化mask
+        kernel = np.ones((3,3), np.uint8)
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+        
+        # 查找轮廓
+        contours, hierarchy = cv2.findContours(combined_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # 创建输出图像
+        self.output_image = self.image_rgb.copy()
+        
+        # 按面积过滤和排序轮廓
+        valid_contours = []
+        for i, contour in enumerate(contours):
+            area = cv2.contourArea(contour)
+            if area > 100:  # 面积阈值可调
+                valid_contours.append((contour, area))
+        
+        # 按面积降序排序
+        valid_contours.sort(key=lambda x: x[1], reverse=True)
+        
+        # 绘制轮廓
+        colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255)]  # 不同层级使用不同颜色
+        for i, (contour, _) in enumerate(valid_contours):
+            color = colors[i % len(colors)]
+            cv2.drawContours(self.output_image, [contour], -1, color, 2)
+        
+        # 保存轮廓信息
+        self.contours = [cont for cont, _ in valid_contours]
+        
+        # 返回处理后的图像
+        return self.output_image
+    
+    def check_background_color(self, image, mask):
+        """
+        检查背景区域的主要颜色
+        """
+        # 获取背景区域
+        background_mask = ~mask
+        background_pixels = image[background_mask]
+
+        if len(background_pixels) == 0:
+            return False
+
+        # 计算背景区域的平均颜色
+        avg_color = np.mean(background_pixels, axis=0)
+
+        # 判断蓝色是否为主要颜色
+        is_bluish = (avg_color[2] > avg_color[0] * 1.2) and (avg_color[2] > avg_color[1] * 1.2)
+
+        return is_bluish
+        
+    def print_contours(self, contours):
+        for contour_index, contour in enumerate(contours):
+            print(f"Contour {contour_index}:")
+            for point in contour:
+                x, y = point[0]
+                print(f"({x}, {y})")
+                
+    def show_combined_result(self):
+        """显示原图、前景和matte的组合结果"""
+        if self.matte is None:
+            print("请先运行process_image()获取matte")
+            return
+            
+        w, h = self.image_rgb.shape[1], self.image_rgb.shape[0]
+        rw, rh = 800, int(h * 800 / (3 * w))
+        
+        # 获取前景
+        matte_3channel = np.repeat(self.matte[:, :, None], 3, axis=2)
+        foreground = self.image_rgb * matte_3channel + np.full(self.image_rgb.shape, 255) * (1 - matte_3channel)
+        
+        # 组合显示
+        combined = np.concatenate((self.image_rgb, foreground, matte_3channel * 255), axis=1)
+        combined = Image.fromarray(np.uint8(combined)).resize((rw, rh))
+        
+        plt.figure(figsize=(15, 5))
+        plt.imshow(combined)
+        plt.axis('off')
+        plt.title("Original - Foreground - Matte")
+        plt.show()
+    
+class PoseSegmentationVisualizer:
+    def __init__(self, image, model_path):
+        self.image = image
+        self.image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        self.pose_analyzer = PoseAnalyzer(image)
+        self.segmentation_processor = ImageSegmentationProcessor(image, model_path)
+        self.intersection_points = []  # 存储交点的列表
+        self.widths = {} #储存宽度的字典
+        self.bodytype = ""  # 储存身体形状的变量        
+        self.result = {}
+
+    def calculate_Body_midpoints(self, landmarks):
+        if landmarks is None:
+            print("⚠️ landmarks 为空，无法计算中点！")
+            return None, None, None, None
+        # 计算肩部和臀部的中点
+        shoulder_mid = self.calculate_midpoint(landmarks[11], landmarks[12])
+        hip_mid = self.calculate_midpoint(landmarks[23], landmarks[24])
+
+        # 计算胸部和腰部的中点
+        chest_mid, waist_mid = self.calculate_chest_waist_midpoints(shoulder_mid, hip_mid)
+
+        return shoulder_mid, chest_mid, waist_mid, hip_mid
+
+    def calculate_midpoint(self, point1, point2):
+        # 计算两个点的中点
+        x = (point1.x + point2.x) / 2
+        y = (point1.y + point2.y) / 2
+        return {'x': x, 'y': y}
+
+        
+    def calculate_distance(self, point1, point2):
+        # 计算两个关键点之间的欧几里得距离
+        return np.sqrt((point1.x - point2.x) ** 2 + (point1.y - point2.y) ** 2)
+
+    def calculate_chest_waist_midpoints(self, shoulder_mid, hip_mid):
+        # 计算胸部和腰部的中点
+        chest_mid = {
+            'x': (2 * shoulder_mid['x'] + hip_mid['x']) / 3,
+            'y': (2 * shoulder_mid['y'] + hip_mid['y']) / 3
+        }
+        waist_mid = {
+            'x': (shoulder_mid['x'] + 2* hip_mid['x']) / 3,
+            'y': (shoulder_mid['y'] + 2* hip_mid['y']) / 3
+        }
+        return chest_mid, waist_mid
+
+    def find_nearest_intersections(self, keypoint, contours):
+        """
+        用于找与指定关键点左右两边最近的轮廓点
+        把轮廓点成对的形式循环遍历，找到包含关键点的y坐标范围的点对然后计算最近距离
+        """
+        x = keypoint['x']
+        y = keypoint['y']
+
+        print(f"正在查找 {keypoint} 在轮廓中的交点...")  # 追踪 keypoint 值
+
+        # 查找可能的交点
+        left_intersections = []
+        right_intersections = []
+        for contour in contours:
+            for i in range(len(contour) - 1):
+                pt1 = contour[i][0]
+                pt2 = contour[i + 1][0]
+    
+                # 将轮廓点转换为归一化坐标
+                pt1_normalized = (pt1[0] / self.segmentation_processor.output_image.shape[1], 
+                                  pt1[1] / self.segmentation_processor.output_image.shape[0])
+                pt2_normalized = (pt2[0] / self.segmentation_processor.output_image.shape[1], 
+                                  pt2[1] / self.segmentation_processor.output_image.shape[0])
+    
+                # 检查关键点的 y 是否在当前线段的 y 范围内
+                if min(pt1_normalized[1], pt2_normalized[1]) <= y <= max(pt1_normalized[1], pt2_normalized[1]):
+                    # 根据 x 坐标将交点分为左侧和右侧
+                    if pt1_normalized[0] < x:
+                        left_intersections.append(pt1_normalized)
+                    if pt2_normalized[0] < x:
+                        left_intersections.append(pt2_normalized)
+                    if pt1_normalized[0] > x:
+                        right_intersections.append(pt1_normalized)
+                    if pt2_normalized[0] > x:
+                        right_intersections.append(pt2_normalized)
+
+
+    
+        # 找到最近的左侧和右侧交点，考虑 y 坐标的接近程度
+        left_intersections.sort(key=lambda p: (abs(p[0] - x), abs(p[1] - y)))
+        right_intersections.sort(key=lambda p: (abs(p[0] - x), abs(p[1] - y)))
+    
+        nearest_left = left_intersections[0] if left_intersections else None
+        nearest_right = right_intersections[0] if right_intersections else None
+    
+        # 计算左右交点之间的距离
+        if nearest_left and nearest_right:
+            distance_between_points = np.linalg.norm(np.array(nearest_left) - np.array(nearest_right))
+            print("正确计算左右交点之间的距离")
+        else:
+            distance_between_points = 0  #None
+            print(f"⚠️ 未找到交点, left: {left_intersections}, right: {right_intersections}")
+
+        return [nearest_left, nearest_right], distance_between_points
+    
+    def calculate_intersections(self, point1, point2, contours, image, landmarks=None):
+        """
+        获取两个关键点中间的轮廓点并计算距离
+        :param point1: 第一个关键点的索引或字典
+        :param point2: 第二个关键点的索引或字典
+        :param contours: 图像的轮廓
+        :param image: 用于可视化的图像
+        :param landmarks: MediaPipe 关键点列表（可选）
+        """
+        # 如果 point1 和 point2 是index，则从 landmarks 中获取坐标放入字典，整体用字典来处理坐标
+        if isinstance(point1, int) and isinstance(point2, int) and landmarks is not None:
+            keypoint1 = {'x': landmarks[point1].x, 'y': landmarks[point1].y}
+            keypoint2 = {'x': landmarks[point2].x, 'y': landmarks[point2].y}
+        else:
+            keypoint1 = point1
+            keypoint2 = point2
+        
+        # 获取关键点的交点
+        intersections_1, _ = self.find_nearest_intersections(keypoint1, contours)
+        intersections_2, _ = self.find_nearest_intersections(keypoint2, contours)
+        
+        # 合并交点并筛选出横坐标在 keypoint1 和 keypoint2 之间的交点
+        all_intersections = intersections_1 + intersections_2
+        x_min = min(keypoint1['x'], keypoint2['x'])
+        x_max = max(keypoint1['x'], keypoint2['x'])
+    
+        filtered_intersections = [pt for pt in all_intersections if x_min <= pt[0] <= x_max]
+
+        # 计算距离
+        if len(filtered_intersections) == 2:
+            pt1, pt2 = filtered_intersections[:2]
+            distance = self.calculate_distance(
+                type('Point', (object,), {'x': pt1[0], 'y': pt1[1]}),
+                type('Point', (object,), {'x': pt2[0], 'y': pt2[1]})
+            )
+        elif len(filtered_intersections) == 1:
+            distance = 0
+            
+        elif len(filtered_intersections) == 0:
+            distance = self.calculate_distance(
+            type('Point', (object,), {'x': keypoint1['x'], 'y': keypoint1['y']}),
+            type('Point', (object,), {'x': keypoint2['x'], 'y': keypoint2['y']})
+        )
+        else:
+            distance = 0
+            print("距离获取失败，请检测环境和光线重新分析")
+    
+        # 可视化筛选后的交点
+        # self.visualize_intersections(keypoint1, filtered_intersections, image)
+        # self.visualize_intersections(keypoint2, filtered_intersections, image)
+    
+        # print(f"关键点 {point1} 和 {point2} 之间的轮廓点距离为", distance)
+        return filtered_intersections, distance
+
+    
+    # def visualize_intersections(self, keypoint, intersections, image):
+    #     # 在图像上绘制关键点、交点和连线
+    #     x = int(keypoint['x'] * image.shape[1])
+    #     y = int(keypoint['y'] * image.shape[0])
+
+    #     # 绘制关键点
+    #     cv2.circle(image, (x, y), 5, (255, 0, 0), -1)  #Red -- mid_point
+
+    #     # 绘制交点连线
+    #     if len(intersections) == 2:
+    #         pt1 = (int(intersections[0][0] * image.shape[1]),
+    #                int(intersections[0][1] * image.shape[0]))
+    #         pt2 = (int(intersections[1][0] * image.shape[1]),
+    #                int(intersections[1][1] * image.shape[0]))
+    #         cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+
+    #     # 绘制交点
+    #     for intersection in intersections:
+    #         ix = int(intersection[0] * image.shape[1])
+    #         iy = int(intersection[1] * image.shape[0])
+    #         cv2.circle(image, (ix, iy), 5, (255, 255, 0), -1)
+
+
+        
+    def determine_body_shape(self, shoulder_width, waist_width, hip_width):
+         # Validate inputs and handle None values
+        if shoulder_width is None or shoulder_width == 0:
+            return "Unknown"
+        if waist_width is None or waist_width <= 0:
+            return "Unknown"
+        if hip_width is None or hip_width <= 0:
+            return "Unknown"
+
+        # 判断身体形状
+        shoulder_ratio = 1  # 以肩围为标准
+        waist_ratio = waist_width / shoulder_width
+        hip_ratio = hip_width / shoulder_width
+        
+        BWH_ratio = f"1:{waist_ratio }:{hip_ratio}"
+        self.result["身材比例(肩：腰：臀)"] = BWH_ratio
+
+        # 如果腰部和臀部比例与肩部相比小于0.2，说明约等
+        if abs(shoulder_ratio - waist_ratio) < 0.1 and abs(shoulder_ratio - hip_ratio) < 0.1:
+            return "H型"
+            
+        # 如果臀部比例与肩部相比小于0.2，同时肩部和臀部大于腰部（按照上面逻辑是大于0.2的）
+        elif abs(shoulder_ratio - hip_ratio) < 0.1 and waist_ratio < shoulder_ratio and waist_ratio < hip_ratio:
+            return "X型"
+            
+       # 如果臀部比例与肩部相比小于0.2，同时肩部和臀部小于腰部     
+        elif waist_ratio > shoulder_ratio and waist_ratio > hip_ratio and abs(shoulder_ratio - hip_ratio) < 0.1:
+            return "O型"
+
+        
+        elif shoulder_ratio < hip_ratio:
+            return "A型"
+
+        
+        elif shoulder_ratio > hip_ratio:
+            return "T型"
+
+        
+        return "Unknown"
+
+    def analyze_leg_shape(self, distance_lap, distance_ankles, distance_calf):
+        # 分析腿型 图像分辨率：低分辨率图像可能导致坐标计算不精确
+        if distance_lap <= 0.02 and distance_ankles <= 0.02 and  distance_calf <= 0.03: #三个距离都小  
+            return "正常腿型"
+            
+        elif distance_lap > 0.02 and distance_ankles <= 0.02 and distance_lap > distance_calf:   #膝盖距离最大 脚踝距离小 
+            return "O型"
+            
+        elif distance_lap > distance_calf > distance_ankles:   #膝盖距离最大 脚踝距离小 
+            return "O型倾向"
+            
+        elif distance_lap <= 0.02 and distance_ankles > 0.02: #膝盖距离小，脚踝距离大
+            return "X型"
+            
+        elif distance_ankles > distance_calf > distance_lap: #膝盖距离小，脚踝距离大
+            return "X型倾向"      
+            
+        elif distance_lap <= 0.02 and distance_ankles <= 0.02 and distance_calf > 0.02:
+            return "XO型"
+            
+        elif distance_calf > distance_lap > distance_ankles:
+            return "XO型倾向"
+            
+        else:
+            return "未知腿型，请检查光线和环境，调整站姿重新获取"
+
+    def process_and_visualize(self):
+        # 获取遮罩处理后的图像
+        segmented_image = self.segmentation_processor.process_image()
+        # 处理姿态分析
+        self.pose_analyzer.process_image()
+        landmarks = self.pose_analyzer.landmarks
+
+        
+        # 计算肩宽为关键点11和12之间的距离并可视化
+        shoulder_width = self.calculate_distance(landmarks[11], landmarks[12]) * 1.2
+         #女生的肩部是11和12距离的1.2倍，如果健身导致肩部很宽 需要换为之前的算法
+        
+        # pt1 = (int(landmarks[11].x * segmented_image.shape[1]), int(landmarks[11].y * segmented_image.shape[0]))
+        # pt2 = (int(landmarks[12].x * segmented_image.shape[1]), int(landmarks[12].y * segmented_image.shape[0]))
+
+
+        
+        # 计算中点
+        shoulder_mid, chest_mid, waist_mid, hip_mid = self.calculate_Body_midpoints(landmarks)
+
+        self.midpoints = {
+            "shoulder_width": shoulder_mid,
+            "chest_width": chest_mid,
+            "waist_width": waist_mid,
+            "hip_width": hip_mid
+        }
+        
+        # # 打印中点坐标
+        # print(f"Shoulder Mid: {shoulder_mid}")
+        # print(f"Chest Mid: {chest_mid}")
+        # print(f"Waist Mid: {waist_mid}")
+        # print(f"Hip Mid: {hip_mid}")
+
+        # 查找轮廓 
+        contours = self.segmentation_processor.contours
+
+        # 定义关键点名称和对应的中点
+        keypoints = {
+            "chest_width": chest_mid,
+            "waist_width": waist_mid,
+            "hip_width": hip_mid
+        }
+
+        # 计算肩宽并储存
+        shoulder_intersections, shoulder_distance = self.find_nearest_intersections(shoulder_mid, contours)
+
+        if not shoulder_intersections or len(shoulder_intersections) < 2:
+            print("⚠️ shoulder 轮廓点计算失败，返回值:", shoulder_intersections)
+            self.widths["shoulder_width"] = shoulder_width  # 防止后续错误
+        else:
+            self.widths["shoulder_width"] = shoulder_distance
+        
+        # 计算并可视化交点
+        for key, keypoint in keypoints.items():
+            intersections, distances = self.find_nearest_intersections(keypoint, contours)
+            
+            if not intersections or len(intersections) < 2 or distances is None:
+                print(f"⚠️ {key} 轮廓点计算失败，返回值: {intersections},{len(intersections)},距离是{distances}")
+  
+            self.widths[key] = distances
+
+        # **可视化身体关键点和连线**
+        overlap = self.image_rgb.copy()
+        if overlap is None or overlap.size == 0:
+            print("⚠️ overlap 副本创建失败！")
+        else:
+            print("✅ overlap 副本创建成功，图像大小:", overlap.shape)
+
+
+        self.visualize_pose(overlap, landmarks) #segmented_image
+
+        # **将最终图像转换为 Base64**
+        base64_image = self.image_to_base64(overlap)
+
+
+        if not base64_image:
+            print("⚠️ Base64 编码失败！")
+        else:
+            print("✅ Base64 编码成功！数据大小:", len(base64_image))
+
+        self.result["processed_body_image"] = base64_image
+        
+
+        
+        # 使用宽度信息判断身体形状
+        self.bodytype = self.determine_body_shape(
+            self.widths.get("shoulder_width", 0),
+            self.widths.get("waist_width", 0),
+            self.widths.get("hip_width", 0)
+        )
+        
+        if (self.bodytype != "Unknown"):
+            self.result["身材类型"] = self.bodytype
+            self.result["body_type"] = self.bodytype[0] 
+            
+            # # 可视化指定的关键点
+            # specific_landmarks = [23, 24,25,26,27,28,29]  # 示例：绘制关键点 0, 11, 12
+            # self.visualize_specific_landmarks(segmented_image, landmarks, specific_landmarks)
+            
+            # 计算膝盖和脚踝的交点和距离
+            _, distance_lap = self.calculate_intersections(25, 26, contours, segmented_image, landmarks)
+            _, distance_ankles = self.calculate_intersections(27, 28, contours, segmented_image, landmarks)
+            # 计算小腿中间点
+            right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28]) #字典形式{"x":x,"y":y}
+            left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
+            
+            # 计算小腿交点距离
+            _, distance_calf = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, segmented_image, landmarks)
+
+            # 分析腿型
+            print("----------------------------------------")
+            print(distance_lap, distance_ankles, distance_calf)
+            print("----------------------------------------")
+            leg_shape = self.analyze_leg_shape(distance_lap, distance_ankles, distance_calf)
+            self.result["腿型"] = leg_shape
+            
+            # 添加英文leg_type
+            if leg_shape == "正常腿型":
+                self.result["leg_type"] = "Normal-leg"
+            elif leg_shape in ["O型", "O型倾向"]:
+                self.result["leg_type"] = "O-leg"
+            elif leg_shape in ["X型", "X型倾向"]:
+                self.result["leg_type"] = "X-leg"
+            elif leg_shape in ["XO型", "XO型倾向"]:
+                self.result["leg_type"] = "XO-leg"
+            else:  # 包括"未知腿型，请检查光线和环境，调整站姿重新获取"的情况
+                self.result["leg_type"] = "Normal-leg"
+
+        
+        else:
+            self.result["身材类型"] = self.bodytype
+            self.result["body_type"] = "H" #"Unknown"
+            self.result["腿型"] = "正常腿型"
+            self.result["leg_type"] = "Normal-leg"
+
+        print("process_and_visualize() 执行完毕，返回了最终结果(包括图片)")
+        return self.result
+    
+    def visualize_pose(self, image, landmarks):
+        """ 可视化身体关键点连线、轮廓线和轮廓点 """
+        print("🚩 visualize_pose() 开始执行")
+        try:
+            overlay = image.copy()
+            alpha = 0.6  # 透明度
+
+            # **颜色定义**
+            line_color = (0, 255, 0)  # 绿色 - 骨骼连线
+            point_color = (0, 0, 255)  # 红色 - 关键点
+            contour_color = (255, 0, 0)  # 蓝色 - 轮廓线
+            contour_point_color = (255, 255, 0)  # 黄色 - 轮廓点
+            thickness = 2
+
+            height, width = image.shape[:2]
+
+            print("🎯 开始绘制 MediaPipe Pose 关键点连线")
+
+            # **MediaPipe Pose 关键点连接关系**
+            pose_connections = [
+                # 上半身
+                (11, 12), (11, 23), (12, 24), (23, 24),  # 肩膀 & 躯干
+                (11, 13), (12, 14), (13, 15), (14, 16), (15, 17), (16, 18),  # 手臂
+                (15, 19), (16, 20), (19, 21), (20, 22),  # 手部
+                # 下半身
+                (23, 25), (24, 26), (25, 27), (26, 28), (27, 29), (28, 30), (29, 31), (30, 32)  # 腿部
+            ]
+
+            # **绘制关键点连线**
+            for (p1, p2) in pose_connections:
+                if p1 in range(11, 33) and p2 in range(11, 33):  # 只绘制11-32号点
+                    pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
+                    pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
+                    cv2.line(overlay, pt1, pt2, line_color, thickness, cv2.LINE_AA)
+
+            # **绘制关键点**
+            for i in range(11, 33):
+                x, y = int(landmarks[i].x * width), int(landmarks[i].y * height)
+                cv2.circle(overlay, (x, y), 4, point_color, -1)
+                cv2.putText(overlay, str(i), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, point_color, 1)
+
+            # **绘制人体轮廓线**
+            contours = self.segmentation_processor.contours
+            cv2.drawContours(overlay, contours, -1, contour_color, 2)
+            
+            # **绘制特定关键点的轮廓交点连线**
+            midpoints = {
+                "shoulder_mid": self.calculate_midpoint(landmarks[11], landmarks[12]),
+                "chest_mid": None,
+                "waist_mid": None,
+                "hip_mid": self.calculate_midpoint(landmarks[23], landmarks[24])
+            }
+            
+            # 计算胸部和腰部的中点
+            if midpoints["shoulder_mid"] and midpoints["hip_mid"]:
+                midpoints["chest_mid"], midpoints["waist_mid"] = self.calculate_chest_waist_midpoints(
+                    midpoints["shoulder_mid"], midpoints["hip_mid"]
+                )
+                
+            # 绘制中点和轮廓交点连线
+            for key, midpoint in midpoints.items():
+                if midpoint:
+                    # 绘制中点
+                    x = int(midpoint['x'] * width)
+                    y = int(midpoint['y'] * height)
+                    cv2.circle(overlay, (x, y), 6, (255, 0, 255), -1)  # 紫色中点
+                    
+                    # 查找轮廓交点并绘制
+                    intersections, _ = self.find_nearest_intersections(midpoint, contours)
+                    if intersections and len(intersections) == 2:
+                        pt1 = (int(intersections[0][0] * width), int(intersections[0][1] * height))
+                        pt2 = (int(intersections[1][0] * width), int(intersections[1][1] * height))
+                        cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                        
+                        # 绘制交点
+                        cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                        cv2.circle(overlay, pt2, 5, contour_point_color, -1)
+
+            # **绘制腿部轮廓交点连线**
+            leg_point_pairs = [(25, 26), (27, 28)]  # 膝盖对、脚踝对
+            for p1, p2 in leg_point_pairs:
+                filtered_intersections, _ = self.calculate_intersections(p1, p2, contours, overlay, landmarks)
+                if filtered_intersections and len(filtered_intersections) >= 2:
+                    pt1 = (int(filtered_intersections[0][0] * width), int(filtered_intersections[0][1] * height))
+                    pt2 = (int(filtered_intersections[1][0] * width), int(filtered_intersections[1][1] * height))
+                    cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                    cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                    cv2.circle(overlay, pt2, 5, contour_point_color, -1)
+                    
+            # 计算小腿中间点并绘制轮廓交点
+            right_leg_calf = self.calculate_midpoint(landmarks[26], landmarks[28])
+            left_leg_calf = self.calculate_midpoint(landmarks[25], landmarks[27])
+            
+            # 绘制小腿中点
+            x1 = int(right_leg_calf['x'] * width)
+            y1 = int(right_leg_calf['y'] * height)
+            x2 = int(left_leg_calf['x'] * width)
+            y2 = int(left_leg_calf['y'] * height)
+            cv2.circle(overlay, (x1, y1), 6, (255, 0, 255), -1)
+            cv2.circle(overlay, (x2, y2), 6, (255, 0, 255), -1)
+            
+            # 计算小腿交点并绘制
+            filtered_intersections, _ = self.calculate_intersections(right_leg_calf, left_leg_calf, contours, overlay)
+            if filtered_intersections and len(filtered_intersections) >= 2:
+                pt1 = (int(filtered_intersections[0][0] * width), int(filtered_intersections[0][1] * height))
+                pt2 = (int(filtered_intersections[1][0] * width), int(filtered_intersections[1][1] * height))
+                cv2.line(overlay, pt1, pt2, contour_point_color, 2, cv2.LINE_AA)
+                cv2.circle(overlay, pt1, 5, contour_point_color, -1)
+                cv2.circle(overlay, pt2, 5, contour_point_color, -1)
+
+            # **融合透明层**
+            cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+            print("✅ visualize_pose() 执行完毕")
+        except Exception as e:
+            print(f"⚠️ visualize_pose() 执行出错: {e}")
+
+
+
+
+
+    
+    # # 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部)
+    # def visualize_pose(self, image, landmarks):
+    #     """ 可视化身体关键点和连线 (包括肩、胸、腰、臀、腿部) """
+    #     print("🚩 visualize_pose() 开始执行")
+    #     try:
+    #         overlay = image.copy()
+    #         alpha = 0.6  # 透明度
+
+    #         # **颜色定义**
+    #         colors = {
+    #             "shoulder_width": (255, 0, 0),  # 蓝色
+    #             # "chest_width": (0, 255, 0),  # 绿色
+    #             "waist_width": (0, 255, 255),  # 黄色
+    #             "hip_width": (255, 0, 255),  # 紫色
+    #         }
+
+    #         height, width = image.shape[0:2]
+
+    #         print("执行画图交点查询")
+
+    #         # **绘制肩、胸、腰、臀线条**
+    #         body_parts = ["shoulder_width", "waist_width", "hip_width"]
+
+            
+    #         for part in body_parts:
+    #             mid_point = self.midpoints.get(part, None)  # 改用self.midpoints
+    #             print(f"当前处理 {part}，中点坐标为: {mid_point}")
+    #             if mid_point is not None:
+    #                 intersections, _ = self.find_nearest_intersections(mid_point, self.segmentation_processor.contours)
+    #                 print(f"画图时，🚩 {part} 的交点: {intersections}")
+    #                 if intersections and len(intersections) == 2:
+    #                     pt1 = (
+    #                         int(intersections[0][0] * width),
+    #                         int(intersections[0][1] * height)
+    #                     )
+    #                     pt2 = (
+    #                         int(intersections[1][0] * width),
+    #                         int(intersections[1][1] * height)
+    #                     )
+    #                     cv2.line(overlay, pt1, pt2, colors[part], 2, cv2.LINE_AA)
+    #                 else:
+    #                     print(f"⚠️ {part} intersections 错误或不完整: {intersections}, 跳过绘制")
+    #             else:
+    #                 print(f"⚠️ {part} 中点坐标不存在或为None")
+
+    #         # **绘制腿部关键点 (11-32 除了 0-10)**
+    #         pose_landmarks = [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+    #         for i in range(len(pose_landmarks) - 1):
+    #             p1, p2 = pose_landmarks[i], pose_landmarks[i + 1]
+    #             pt1 = (int(landmarks[p1].x * width), int(landmarks[p1].y * height))
+    #             pt2 = (int(landmarks[p2].x * width), int(landmarks[p2].y * height))
+    #             cv2.line(overlay, pt1, pt2, colors["leg"], 2, cv2.LINE_AA)
+
+    #         # **融合透明层**
+    #         cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+    #         print("✅ visualize_pose() 执行完毕")
+    #     except Exception as e:
+    #         print(f"⚠️ visualize_pose() 执行出错: {e}")
+    
+    def image_to_base64(self, image_rgb):
+        """
+        直接使用OpenCV的imencode方法进行Base64转换(确保RGB转BGR)
+        """
+        # RGB 转回 BGR（OpenCV默认）
+        image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        success, buffer = cv2.imencode('.png', image_bgr)
+        if not success:
+            print("⚠️ 图像imencode失败!")
+            return None
+        base64_string = base64.b64encode(buffer).decode("utf-8")
+        return f"data:image/png;base64,{base64_string}"
+    
+
+
+if __name__ == "__main__":
+    try:
+        # 获取项目根目录
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 设置图片路径
+        image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Seasons_1_body.jpg")
+        print(f"尝试读取图片路径: {image_path}")
+        
+        # 确保图片路径存在
+        if not os.path.exists(image_path):
+            print(f"错误：图片路径不存在 {image_path}")
+            # 尝试使用绝对路径
+            image_path = r"f:\YZHA0058\seasons-backend\src\Seasons_1_body.jpg"
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"无法找到图片，请检查路径")
+        
+        # 设置模型路径
+        model_path = os.path.join(parent_dir, "MODNet", "pretrained", "modnet_photographic_portrait_matting.ckpt")
+        print(f"尝试读取模型路径: {model_path}")
+        
+        # 检查文件是否存在
+        if not os.path.exists(model_path):
+            print(f"⚠️ 模型路径不存在")
+            # 尝试其他可能的路径
+            model_path = r"f:\YZHA0058\seasons-backend\MODNet\pretrained\modnet_photographic_portrait_matting.ckpt"
+            print(f"尝试使用绝对路径: {model_path}")
+            
+        # 读取图片
+        image = cv2.imread(image_path)
+        if image is None:
+            raise FileNotFoundError(f"无法读取图片: {image_path}")
+            
+        # 实例化并分析
+        pose_analyzer = PoseAnalyzer(image)
+        pose_results = pose_analyzer.analyze()
+        
+        # 获取结果
+        body_ratio = pose_results.get("上下半身比例", "N/A")
+        print(f"📏 计算出的 body_ratio: {body_ratio}")
+        
+        # 处理图像分割
+        three_d_model = PoseSegmentationVisualizer(image, model_path=model_path)
+        result = three_d_model.process_and_visualize()
+        
+        # 显示图片
+        base64_image = result.get("processed_body_image", None)
+        if base64_image:
+            # 处理图像显示...
+            print("✅ 图像处理成功")
+        else:
+            print("⚠️ 没有可视化图片数据！")
+    except Exception as e:
+        import traceback
+        print(f"程序运行错误: {str(e)}")
+        traceback.print_exc()
+    
+    

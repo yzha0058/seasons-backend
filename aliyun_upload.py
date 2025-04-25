@@ -126,44 +126,44 @@ def upload_to_oss(face_info, body_info, season_recommend, face_image, body_image
 
     pdf_list = [generated_pdf]  # Start with the generated PDF
     
-    # face_style = body_info["Face_style"]
-    # HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
-    # print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
-    # hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
-    # pdf_list.append(hairstyle_pdf)
+    face_style = body_info["face_volume_info"]["Face_style"]
+    HAIRSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/hairstyle/hairstyle-{face_style}.pdf"
+    print(f"Downloading Hairstyle PDF: {HAIRSTYLE_PDF_URL}")
+    hairstyle_pdf = download_pdf(HAIRSTYLE_PDF_URL)
+    pdf_list.append(hairstyle_pdf)
 
-    # if season_recommend:
-    #     SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params
-    #     print(f"Downloading Season Recommend PDF: {SEASON_RECOMMEND_PDF_URL}")
-    #     season_recommend_pdf = download_pdf(SEASON_RECOMMEND_PDF_URL)
-    #     pdf_list.append(season_recommend_pdf)
-    # else:
-    #     print("No season analysis provided, Skipping recommend.")
+    if season_recommend:
+        SEASON_RECOMMEND_PDF_URL = re.sub(r"\.jpg(\?.*)?$", ".pdf", season_recommend)  # Handles .jpg even with query params
+        print(f"Downloading Season Recommend PDF: {SEASON_RECOMMEND_PDF_URL}")
+        season_recommend_pdf = download_pdf(SEASON_RECOMMEND_PDF_URL)
+        pdf_list.append(season_recommend_pdf)
+    else:
+        print("No season analysis provided, Skipping recommend.")
 
 
-    # face_shape_type = face_info["Face_shape_type"]
-    # ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"
-    # print(f"Downloading Accessory PDF: {ACCESSORY_PDF_URL}")
-    # accessory_pdf = download_pdf(ACCESSORY_PDF_URL)
-    # pdf_list.append(accessory_pdf)
+    face_shape_type = face_info["Face_shape_type"]
+    ACCESSORY_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/accessory/accessory-{face_shape_type}.pdf"
+    print(f"Downloading Accessory PDF: {ACCESSORY_PDF_URL}")
+    accessory_pdf = download_pdf(ACCESSORY_PDF_URL)
+    pdf_list.append(accessory_pdf)
 
-    # body_style = body_info["body_style"]
-    # BODYSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/outfitstyle/outfitstyle-{body_style}.pdf"
-    # print(f"Downloading BodyStyle PDF: {BODYSTYLE_PDF_URL}")
-    # bodystyle_pdf = download_pdf(BODYSTYLE_PDF_URL)
-    # pdf_list.append(bodystyle_pdf)
+    body_style = body_info["body_style"]
+    BODYSTYLE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/outfitstyle/outfitstyle-{body_style}.pdf"
+    print(f"Downloading BodyStyle PDF: {BODYSTYLE_PDF_URL}")
+    bodystyle_pdf = download_pdf(BODYSTYLE_PDF_URL)
+    pdf_list.append(bodystyle_pdf)
 
-    # body_type = body_info["body_type"]
-    # BODYTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{body_type}.pdf"
-    # print(f"Downloading BodyType PDF: {BODYTYPE_PDF_URL}")
-    # bodytype_pdf = download_pdf(BODYTYPE_PDF_URL)
-    # pdf_list.append(bodytype_pdf)
+    body_type = body_info["body_type"]
+    BODYTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{body_type}.pdf"
+    print(f"Downloading BodyType PDF: {BODYTYPE_PDF_URL}")
+    bodytype_pdf = download_pdf(BODYTYPE_PDF_URL)
+    pdf_list.append(bodytype_pdf)
 
-    # leg_type = body_info["leg_type"]
-    # LEGTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{leg_type}.pdf"
-    # print(f"Downloading LegType PDF: {LEGTYPE_PDF_URL}")
-    # legtype_pdf = download_pdf(LEGTYPE_PDF_URL)
-    # pdf_list.append(legtype_pdf)
+    leg_type = body_info["leg_type"]
+    LEGTYPE_PDF_URL = f"https://yzha-seasons.oss-cn-beijing.aliyuncs.com/seasons-export/body/body-{leg_type}.pdf"
+    print(f"Downloading LegType PDF: {LEGTYPE_PDF_URL}")
+    legtype_pdf = download_pdf(LEGTYPE_PDF_URL)
+    pdf_list.append(legtype_pdf)
 
     # Merge all PDFs
     print("Merging PDFs")
@@ -197,7 +197,7 @@ def upload_to_oss(face_info, body_info, season_recommend, face_image, body_image
 
     print("Uploading to cloud")
 
-    return {'message': 'File uploaded successfully', 'file_url': f"{host}/{key}"}
+    # return {'message': 'File uploaded successfully', 'file_url': f"{host}/{key}"}
 
     # Perform the file upload
     with open(local_file_path, 'rb') as file:

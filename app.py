@@ -289,6 +289,7 @@ def body_analyze():
                     "Final_Curve_Straight": volume_result.get('Final_Curve_Straight', 'Natural'),
                 },
                 "processed_body_image": processed_image,
+                "body_style": volume_result.get('Final_Curve_Straight', '未知'), #"Straight",
                 "body_type": three_d_model.result.get('body_type', '未知'),
                 "leg_type": three_d_model.result.get('leg_type', '未知'),
             }
